@@ -1,0 +1,618 @@
+const MODELS_KEY    = 'wrkflow:models'       // localStorage  — config only, NO api keys
+const KEYS_SS_KEY   = 'wrkflow:keys'         // sessionStorage — api keys (clears on tab close)
+const SESSION_KEY_K = 'wrkflow:sk'           // sessionStorage — per-session random cipher key
+
+// Lazily generate or recall a cryptographically-random per-session key.
+// The key lives only in sessionStorage (cleared when the tab closes) and is
+// never embedded in source code — makes offline rainbow-table attacks infeasible.
+function getSessionKey() {
+  try {
+    let sk = sessionStorage.getItem(SESSION_KEY_K)
+    if (!sk) {
+      const raw = new Uint8Array(32)
+      crypto.getRandomValues(raw)
+      sk = Array.from(raw).map(b => String.fromCharCode(b)).join('')
+      sessionStorage.setItem(SESSION_KEY_K, btoa(sk))
+    } else {
+      sk = atob(sk)
+    }
+    return sk
+  } catch {
+    // Fallback: fixed key (same behaviour as before, but only reached in restricted environments)
+    return 'logik-fallback-key-xor'
+  }
+}
+
+function encrypt(text) {
+  if (!text) return ''
+  const key = getSessionKey()
+  return btoa(text.split('').map((c, i) => String.fromCharCode(c.charCodeAt(0) ^ key.charCodeAt(i % key.length))).join(''))
+}
+
+function decrypt(text) {
+  if (!text) return ''
+  try {
+    const key = getSessionKey()
+    return atob(text).split('').map((c, i) => String.fromCharCode(c.charCodeAt(0) ^ key.charCodeAt(i % key.length))).join('')
+  } catch {
+    return ''
+  }
+}
+
+const DEFAULT_MODELS = [
+  {
+    id: 'preset-claude-sonnet-46',
+    name: 'Claude Sonnet 4.6',
+    apiKey: '',
+    baseUrl: 'https://api.anthropic.com/v1',
+    modelId: 'claude-sonnet-4-6',
+  },
+  {
+    id: 'preset-kimi-k2-5',
+    name: 'Kimi K2.5',
+    apiKey: '',
+    baseUrl: 'https://api.moonshot.cn/v1',
+    modelId: 'kimi-k2-5',
+  },
+  {
+    id: 'preset-gpt-4o',
+    name: 'GPT-4o',
+    apiKey: '',
+    baseUrl: 'https://api.openai.com/v1',
+    modelId: 'gpt-4o',
+  },
+  {
+    id: 'preset-gemini-pro',
+    name: 'Gemini Pro',
+    apiKey: '',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+    modelId: 'gemini-pro',
+  },
+]
+
+export function loadModels() {
+  try {
+    // Load model configs (without API keys) from localStorage
+    const raw    = localStorage.getItem(MODELS_KEY)
+    const parsed = raw !== null ? JSON.parse(raw) : null
+    const configs = (!parsed || parsed.length === 0) ? DEFAULT_MODELS : parsed
+
+    // Load API keys from sessionStorage (tab-scoped)
+    let keys = {}
+    try {
+      const keysRaw = sessionStorage.getItem(KEYS_SS_KEY)
+      if (keysRaw) {
+        const decrypted = JSON.parse(decrypt(keysRaw))
+        keys = decrypted || {}
+      }
+    } catch {}
+
+    // Merge: sessionStorage key wins; fall back to any key still in localStorage config (migration)
+    return configs.map(m => ({ ...m, apiKey: keys[m.id] ?? m.apiKey ?? '' }))
+  } catch {
+    return DEFAULT_MODELS
+  }
+}
+
+export function saveModels(models) {
+  // Persist config (no API keys) to localStorage
+  const configs = models.map(({ apiKey, ...rest }) => rest)
+  localStorage.setItem(MODELS_KEY, JSON.stringify(configs))
+
+  // Persist API keys to sessionStorage only (cleared automatically on tab close)
+  const keys = {}
+  models.forEach(m => { if (m.apiKey) keys[m.id] = m.apiKey })
+  sessionStorage.setItem(KEYS_SS_KEY, encrypt(JSON.stringify(keys)))
+}
+
+// Wipe all stored API keys from both storages
+export function clearApiKeys() {
+  sessionStorage.removeItem(KEYS_SS_KEY)
+  try {
+    const raw = localStorage.getItem(MODELS_KEY)
+    if (raw) {
+      const models = JSON.parse(raw)
+      localStorage.setItem(MODELS_KEY, JSON.stringify(
+        models.map(({ apiKey, ...rest }) => rest)
+      ))
+    }
+  } catch {}
+}
+
+function isAnthropicUrl(baseUrl) {
+  return baseUrl.includes('api.anthropic.com')
+}
+
+// ── Proxy detection ───────────────────────────────────────────────────────────
+// When the Firebase Cloud Function is deployed, VITE_AI_PROXY_URL is set to
+// https://us-central1-wolfkrow-ea567.cloudfunctions.net/api
+// The proxy holds all API keys as Firebase Secrets — the browser key field
+// can be left blank and the model will still work.
+const PROXY_URL = import.meta.env?.VITE_AI_PROXY_URL || null
+
+import { THINKING_BUDGET_TOKENS } from '../config/constants.js'
+
+// Detect provider name from baseUrl for the proxy request
+function detectProvider(baseUrl) {
+  if (baseUrl.includes('anthropic.com'))    return 'anthropic'
+  if (baseUrl.includes('moonshot.cn'))      return 'kimi'
+  if (baseUrl.includes('openai.com'))       return 'openai'
+  if (baseUrl.includes('googleapis.com'))   return 'gemini'
+  return 'openai'   // default: treat any other URL as OpenAI-compatible
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+const DEFAULT_MAX_TOKENS = 8192
+
+async function fetchWithRetry(url, options, maxRetries = 4) {
+  let delay = 2000
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const res = await fetch(url, options)
+      if (res.status === 429 && attempt < maxRetries) {
+        const retryAfter = res.headers.get('retry-after')
+        const waitMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : delay
+        await sleep(waitMs)
+        delay = Math.min(delay * 2, 30000)
+        continue
+      }
+      return res
+    } catch (err) {
+      // AbortError must propagate immediately — never retry a user-initiated abort
+      if (err.name === 'AbortError') throw err
+      // Network error / DNS failure etc.
+      if (attempt < maxRetries) {
+        await sleep(delay)
+        delay = Math.min(delay * 2, 30000)
+        continue
+      }
+      throw err
+    }
+  }
+}
+
+async function readSSEStream(res, onChunk, extractDelta, signal) {
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let fullText = ''
+
+  while (true) {
+    if (signal?.aborted) {
+      reader.cancel()
+      break
+    }
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop()
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue
+      const data = line.slice(6)
+      if (data === '[DONE]') continue
+      try {
+        const delta = extractDelta(JSON.parse(data))
+        if (delta) {
+          fullText += delta
+          onChunk?.(fullText)
+        }
+      } catch (e) {
+        console.warn('[LOGIK] readSSEStream: skipped malformed event —', e.message, '| data:', data?.slice(0, 80))
+      }
+    }
+  }
+
+  return fullText
+}
+
+// Build request options — routes through Firebase proxy when VITE_AI_PROXY_URL is set.
+// modelConfig is passed through to apply temperature and extended-thinking settings.
+function buildAnthropicRequest(baseUrl, apiKey, modelId, body, modelConfig = {}) {
+  // Apply temperature — extended thinking requires temperature = 1
+  if (modelConfig.enableThinking) {
+    body.thinking  = { type: 'enabled', budget_tokens: modelConfig.thinkingBudget || THINKING_BUDGET_TOKENS }
+    body.temperature = 1   // required by Anthropic when thinking is enabled
+  } else if (modelConfig.temperature !== undefined) {
+    body.temperature = modelConfig.temperature
+  }
+
+  if (PROXY_URL) {
+    return {
+      url: `${PROXY_URL}/proxy`,
+      options: {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: 'anthropic', body: { model: modelId, ...body } }),
+      },
+    }
+  }
+  const headers = {
+    'Content-Type': 'application/json',
+    'x-api-key': apiKey,
+    'anthropic-version': '2024-06-01',
+    'anthropic-dangerous-allow-browser': 'true',
+  }
+  if (modelConfig.enableThinking) {
+    headers['anthropic-beta'] = 'interleaved-thinking-2025-05-14'
+  }
+  return {
+    url: `${baseUrl}/messages`,
+    options: {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ model: modelId, ...body }),
+    },
+  }
+}
+
+function buildOpenAIRequest(baseUrl, apiKey, modelId, body, modelConfig = {}) {
+  if (modelConfig.temperature !== undefined) {
+    body.temperature = modelConfig.temperature
+  }
+  // Kimi K2.5 extended thinking — Moonshot API flag
+  if (modelConfig.enableThinking && baseUrl.includes('moonshot.cn')) {
+    body.enable_thinking = true
+  }
+  if (PROXY_URL) {
+    return {
+      url: `${PROXY_URL}/proxy`,
+      options: {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: detectProvider(baseUrl), body: { model: modelId, ...body } }),
+      },
+    }
+  }
+  return {
+    url: `${baseUrl}/chat/completions`,
+    options: {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ model: modelId, ...body }),
+    },
+  }
+}
+
+async function runAnthropicPrompt(modelConfig, messages, onChunk, signal) {
+  const { apiKey, baseUrl, modelId } = modelConfig
+  const { url, options } = buildAnthropicRequest(baseUrl, apiKey, modelId, {
+    max_tokens: modelConfig.maxTokens || DEFAULT_MAX_TOKENS, stream: true, messages,
+  }, modelConfig)
+
+  const res = await fetchWithRetry(url, { ...options, signal })
+  if (!res.ok) { const err = await res.text(); throw new Error(`AI API error ${res.status}: ${err}`) }
+
+  return readSSEStream(
+    res, onChunk,
+    (parsed) => parsed.type === 'content_block_delta' && parsed.delta?.type === 'text_delta'
+      ? parsed.delta.text : null,
+    signal,
+  )
+}
+
+async function runOpenAIPrompt(modelConfig, messages, onChunk, signal) {
+  const { apiKey, baseUrl, modelId } = modelConfig
+  const { url, options } = buildOpenAIRequest(baseUrl, apiKey, modelId, { stream: true, messages }, modelConfig)
+
+  const res = await fetchWithRetry(url, { ...options, signal })
+  if (!res.ok) { const err = await res.text(); throw new Error(`AI API error ${res.status}: ${err}`) }
+
+  return readSSEStream(res, onChunk, (parsed) => parsed.choices?.[0]?.delta?.content ?? null, signal)
+}
+
+// ── Streaming SSE readers for tool-use responses ─────────────────────────────
+
+async function readAnthropicToolStream(res, signal, onTextDelta) {
+  const reader  = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer    = ''
+  let fullText  = ''
+  const toolBlocks = {}   // index → { id, name, jsonParts[] }
+  let stopReason   = null
+
+  while (true) {
+    if (signal?.aborted) { reader.cancel(); break }
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop()
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue
+      const data = line.slice(6)
+      if (data === '[DONE]') continue
+      try {
+        const ev = JSON.parse(data)
+        if (ev.type === 'content_block_start' && ev.content_block?.type === 'tool_use') {
+          toolBlocks[ev.index] = { id: ev.content_block.id, name: ev.content_block.name, jsonParts: [] }
+        } else if (ev.type === 'content_block_delta') {
+          if (ev.delta?.type === 'text_delta') {
+            fullText += ev.delta.text
+            onTextDelta?.(ev.delta.text)
+          } else if (ev.delta?.type === 'input_json_delta' && toolBlocks[ev.index]) {
+            toolBlocks[ev.index].jsonParts.push(ev.delta.partial_json)
+          }
+        } else if (ev.type === 'message_delta') {
+          stopReason = ev.delta?.stop_reason
+        }
+      } catch {}
+    }
+  }
+
+  const toolCalls = Object.values(toolBlocks).map(b => {
+    let input = {}
+    try { input = JSON.parse(b.jsonParts.join('')) } catch {}
+    return { id: b.id, name: b.name, input }
+  })
+
+  // _raw: content block array Anthropic needs back in the next user message
+  const _raw = []
+  if (fullText) _raw.push({ type: 'text', text: fullText })
+  toolCalls.forEach(tc => _raw.push({ type: 'tool_use', id: tc.id, name: tc.name, input: tc.input }))
+
+  return { text: fullText, toolCalls, isDone: stopReason === 'end_turn' || toolCalls.length === 0, _raw }
+}
+
+async function readOpenAIToolStream(res, signal, onTextDelta) {
+  const reader  = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer    = ''
+  let fullText  = ''
+  let reasoningContent = ''
+  const tcMap   = {}   // index → { id, name, argParts[] }
+  let finishReason = null
+
+  while (true) {
+    if (signal?.aborted) { reader.cancel(); break }
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop()
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue
+      const data = line.slice(6)
+      if (data === '[DONE]') continue
+      try {
+        const ev     = JSON.parse(data)
+        const choice = ev.choices?.[0]
+        if (!choice) continue
+        const delta  = choice.delta
+        if (delta?.content) {
+          fullText += delta.content
+          onTextDelta?.(delta.content)
+        }
+        // Kimi K2.5 thinking mode — accumulate reasoning_content
+        if (delta?.reasoning_content) {
+          reasoningContent += delta.reasoning_content
+        }
+        if (delta?.tool_calls) {
+          for (const tc of delta.tool_calls) {
+            if (!tcMap[tc.index]) tcMap[tc.index] = { id: '', name: '', argParts: [] }
+            if (tc.id)                   tcMap[tc.index].id = tc.id
+            if (tc.function?.name)       tcMap[tc.index].name = tc.function.name
+            if (tc.function?.arguments)  tcMap[tc.index].argParts.push(tc.function.arguments)
+          }
+        }
+        if (choice.finish_reason) finishReason = choice.finish_reason
+      } catch {}
+    }
+  }
+
+  const toolCalls = Object.values(tcMap).map(tc => {
+    let input = {}
+    try { input = JSON.parse(tc.argParts.join('')) } catch {}
+    return { id: tc.id, name: tc.name, input }
+  })
+
+  const _raw = {
+    role: 'assistant',
+    content: fullText || null,
+    tool_calls: toolCalls.length > 0
+      ? toolCalls.map(tc => ({ id: tc.id, type: 'function', function: { name: tc.name, arguments: JSON.stringify(tc.input) } }))
+      : undefined,
+  }
+  // Preserve reasoning_content for providers that require it in multi-turn history (e.g. Kimi K2.5 thinking mode)
+  if (reasoningContent) _raw.reasoning_content = reasoningContent
+
+  return { text: fullText, toolCalls, isDone: finishReason === 'stop' || toolCalls.length === 0, _raw }
+}
+
+// ── callWithToolsStreaming — streaming tool-use call ──────────────────────────
+// Same interface as callWithTools but streams text tokens via onTextDelta(delta).
+export async function callWithToolsStreaming(modelConfig, messages, tools, signal, systemPrompt, onTextDelta) {
+  const { apiKey, baseUrl, modelId } = modelConfig
+  const isAnthropic = isAnthropicUrl(baseUrl)
+
+  if (isAnthropic) {
+    const body = { max_tokens: modelConfig.maxTokens || DEFAULT_MAX_TOKENS, stream: true, tools, messages }
+    if (systemPrompt) body.system = systemPrompt
+    const { url, options } = buildAnthropicRequest(baseUrl, apiKey, modelId, body, modelConfig)
+    const res = await fetchWithRetry(url, { ...options, signal })
+    if (!res.ok) { const err = await res.text(); throw new Error(`AI API error ${res.status}: ${err}`) }
+    return readAnthropicToolStream(res, signal, onTextDelta)
+  }
+
+  const openAITools = tools.map(t => ({
+    type: 'function',
+    function: { name: t.name, description: t.description, parameters: t.input_schema },
+  }))
+  const { url, options } = buildOpenAIRequest(baseUrl, apiKey, modelId, {
+    stream: true, tools: openAITools, tool_choice: 'auto', messages,
+  }, modelConfig)
+  const res = await fetchWithRetry(url, { ...options, signal })
+  if (!res.ok) { const err = await res.text(); throw new Error(`AI API error ${res.status}: ${err}`) }
+  return readOpenAIToolStream(res, signal, onTextDelta)
+}
+
+// ── callWithTools — non-streaming call with function/tool schemas ─────────────
+// Used by the agentic loop.  Returns a normalised response:
+//   { text, toolCalls: [{id, name, input}], isDone, _raw }
+// Works with both Anthropic (tool_use blocks) and OpenAI (tool_calls array).
+export async function callWithTools(modelConfig, messages, tools, signal, systemPrompt) {
+  const { apiKey, baseUrl, modelId } = modelConfig
+  const isAnthropic = isAnthropicUrl(baseUrl)
+
+  if (isAnthropic) {
+    const body = { max_tokens: modelConfig.maxTokens || DEFAULT_MAX_TOKENS, tools, messages }
+    if (systemPrompt) body.system = systemPrompt
+    const { url, options } = buildAnthropicRequest(baseUrl, apiKey, modelId, body, modelConfig)
+    const res = await fetchWithRetry(url, { ...options, signal })
+    if (!res.ok) { const err = await res.text(); throw new Error(`AI API error ${res.status}: ${err}`) }
+    const data = await res.json()
+    const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('')
+    const toolCalls = (data.content || [])
+      .filter(b => b.type === 'tool_use')
+      .map(b => ({ id: b.id, name: b.name, input: b.input }))
+    return { text, toolCalls, isDone: data.stop_reason === 'end_turn', _raw: data.content }
+  }
+
+  // OpenAI / Kimi / any compatible
+  const openAITools = tools.map(t => ({
+    type: 'function',
+    function: { name: t.name, description: t.description, parameters: t.input_schema },
+  }))
+  const { url, options } = buildOpenAIRequest(baseUrl, apiKey, modelId, {
+    tools: openAITools,
+    tool_choice: 'auto',
+    messages,
+  })
+  const res = await fetchWithRetry(url, { ...options, signal })
+  if (!res.ok) { const err = await res.text(); throw new Error(`AI API error ${res.status}: ${err}`) }
+  const data = await res.json()
+  const choice = data.choices?.[0]
+  const text = choice?.message?.content || ''
+  const toolCalls = (choice?.message?.tool_calls || []).map(tc => ({
+    id: tc.id,
+    name: tc.function.name,
+    input: (() => { try { return JSON.parse(tc.function.arguments || '{}') } catch { return {} } })(),
+  }))
+  return { text, toolCalls, isDone: choice?.finish_reason === 'stop', _raw: choice?.message }
+}
+
+// Convert Anthropic-style content blocks to OpenAI-compatible format
+function toOpenAIContent(content) {
+  if (typeof content === 'string') return content
+  return content.map((block) => {
+    if (block.type === 'text') return { type: 'text', text: block.text }
+    if (block.type === 'image') {
+      return {
+        type: 'image_url',
+        image_url: { url: `data:${block.source.media_type};base64,${block.source.data}` },
+      }
+    }
+    if (block.type === 'document') {
+      try {
+        const text = atob(block.source.data)
+        return { type: 'text', text }
+      } catch {
+        return { type: 'text', text: '' }
+      }
+    }
+    return { type: 'text', text: '' }
+  })
+}
+
+export async function runPrompt(modelConfig, content, context = [], onChunk, signal) {
+  const { baseUrl } = modelConfig
+
+  if (isAnthropicUrl(baseUrl)) {
+    const messages = [...context, { role: 'user', content }]
+    return runAnthropicPrompt(modelConfig, messages, onChunk, signal)
+  }
+
+  // OpenAI path: convert content blocks
+  const openAIContext = context.map((msg) => ({
+    ...msg,
+    content: toOpenAIContent(msg.content),
+  }))
+  const messages = [...openAIContext, { role: 'user', content: toOpenAIContent(content) }]
+  return runOpenAIPrompt(modelConfig, messages, onChunk, signal)
+}
+
+// A wrapper that retries failed prompt calls (network errors, rate limits) up to maxRetries.
+export async function runPromptWithRetry(modelConfig, content, context = [], onChunk, signal, maxRetries = 2) {
+  let lastErr = null
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await runPrompt(modelConfig, content, context, onChunk, signal)
+    } catch (err) {
+      lastErr = err
+      // If aborted, propagate immediately
+      if (err.name === 'AbortError') throw err
+      // If this was last attempt, throw
+      if (attempt === maxRetries) throw err
+      // Otherwise wait and retry
+      await sleep(1000 * Math.pow(2, attempt))
+    }
+  }
+  throw lastErr
+}
+
+// ── countTokensAnthropic — estimate token count before sending ────────────────
+// Returns { inputTokens } or throws on error.  Only works for Anthropic models.
+// Safe to call at any time — does NOT consume output tokens.
+export async function countTokensAnthropic(modelConfig, messages, systemPrompt) {
+  const { apiKey, baseUrl, modelId } = modelConfig
+  if (!isAnthropicUrl(baseUrl)) throw new Error('countTokensAnthropic: only supported for Anthropic models')
+
+  const body = { model: modelId, messages }
+  if (systemPrompt) body.system = systemPrompt
+
+  if (PROXY_URL) {
+    const res = await fetchWithRetry(`${PROXY_URL}/proxy`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider: 'anthropic', endpoint: '/v1/messages/count_tokens', body }),
+    })
+    if (!res.ok) { const err = await res.text(); throw new Error(`Token count error ${res.status}: ${err}`) }
+    const data = await res.json()
+    return { inputTokens: data.input_tokens }
+  }
+
+  const res = await fetchWithRetry(`${baseUrl}/messages/count_tokens`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2024-06-01',
+      'anthropic-dangerous-allow-browser': 'true',
+    },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) { const err = await res.text(); throw new Error(`Token count error ${res.status}: ${err}`) }
+  const data = await res.json()
+  return { inputTokens: data.input_tokens }
+}
+
+// ── callForStructuredOutput — JSON extraction via Anthropic tool_use ──────────
+// Asks the model to fill a named tool schema and returns the parsed input object.
+// toolName:   string  — name of the tool (e.g. 'extract_plan')
+// toolSchema: object  — JSON Schema for the tool's input_schema
+// prompt:     string  — user instruction
+// systemPrompt: string | undefined
+// Returns the parsed object on success, throws on error.
+export async function callForStructuredOutput(modelConfig, toolName, toolSchema, prompt, systemPrompt) {
+  const { apiKey, baseUrl, modelId } = modelConfig
+  if (!isAnthropicUrl(baseUrl)) throw new Error('callForStructuredOutput: only supported for Anthropic models')
+
+  const tools = [{ name: toolName, description: toolSchema.description || toolName, input_schema: toolSchema }]
+  const messages = [{ role: 'user', content: prompt }]
+  const body = {
+    max_tokens: modelConfig.maxTokens || DEFAULT_MAX_TOKENS,
+    tools,
+    tool_choice: { type: 'tool', name: toolName },
+    messages,
+  }
+  if (systemPrompt) body.system = systemPrompt
+
+  const { url, options } = buildAnthropicRequest(baseUrl, apiKey, modelId, body)
+  const res = await fetchWithRetry(url, options)
+  if (!res.ok) { const err = await res.text(); throw new Error(`AI API error ${res.status}: ${err}`) }
+  const data = await res.json()
+  const toolUse = (data.content || []).find(b => b.type === 'tool_use' && b.name === toolName)
+  if (!toolUse) throw new Error(`callForStructuredOutput: model did not call tool '${toolName}'`)
+  return toolUse.input
+}

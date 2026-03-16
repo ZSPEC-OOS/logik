@@ -1,0 +1,103 @@
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import { spawn } from 'child_process'
+
+// Dev-only exec bridge — lets the LOGIK terminal and Tools tab run real shell
+// commands on your machine during `vite dev`. Never included in production builds.
+function tokenize(cmdStr) {
+  const tokens = []
+  let cur = ''
+  let quote = null
+  for (const ch of cmdStr.trim()) {
+    if (quote) {
+      if (ch === quote) quote = null
+      else cur += ch
+    } else if (ch === '"' || ch === "'") {
+      quote = ch
+    } else if (ch === ' ' || ch === '\t') {
+      if (cur) { tokens.push(cur); cur = '' }
+    } else {
+      cur += ch
+    }
+  }
+  if (cur) tokens.push(cur)
+  return tokens
+}
+
+function execBridgePlugin() {
+  return {
+    name: 'logik-exec-bridge',
+    configureServer(server) {
+      server.middlewares.use('/api/exec-stream', (req, res) => {
+        if (req.method !== 'POST') { res.statusCode = 405; res.end(); return }
+        let body = ''
+        req.on('data', chunk => { body += chunk })
+        req.on('end', () => {
+          let parsed
+          try { parsed = JSON.parse(body) } catch { res.statusCode = 400; res.end('Bad JSON'); return }
+          const { cmd: cmdStr, cwd, timeout = 60000 } = parsed
+          if (!cmdStr) { res.statusCode = 400; res.end('Missing cmd'); return }
+          const tokens = tokenize(cmdStr)
+          if (tokens.length === 0) { res.statusCode = 400; res.end('Empty command'); return }
+          const [cmd, ...args] = tokens
+          const workDir = cwd || process.cwd()
+          res.setHeader('Content-Type',  'text/event-stream')
+          res.setHeader('Cache-Control', 'no-cache')
+          res.setHeader('Connection',    'keep-alive')
+          res.setHeader('Access-Control-Allow-Origin', '*')
+          const send = (type, data) => res.write(`data: ${JSON.stringify({ type, data })}\n\n`)
+          const child = spawn(cmd, args, { cwd: workDir, shell: false, env: process.env })
+          if (parsed.stdin != null) { child.stdin.write(String(parsed.stdin)); child.stdin.end() }
+          child.stdout.on('data', d => send('stdout', d.toString()))
+          child.stderr.on('data', d => send('stderr', d.toString()))
+          const timer = setTimeout(() => { child.kill('SIGTERM'); send('stderr', '\n[exec-bridge] timeout') }, timeout)
+          child.on('close', code => { clearTimeout(timer); send('done', code ?? 1); res.end() })
+          child.on('error', err  => { clearTimeout(timer); send('error', err.message); res.end() })
+        })
+      })
+
+      server.middlewares.use('/api/exec', (req, res) => {
+        if (req.method === 'GET') {
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify({ ok: true, version: '1.0' }))
+          return
+        }
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('Method Not Allowed'); return }
+        let body = ''
+        req.on('data', chunk => { body += chunk })
+        req.on('end', () => {
+          let parsed
+          try { parsed = JSON.parse(body) } catch { res.statusCode = 400; res.end('Bad JSON'); return }
+          const { cmd: cmdStr, cwd, timeout = 60000 } = parsed
+          if (!cmdStr || typeof cmdStr !== 'string') { res.statusCode = 400; res.end('Missing cmd'); return }
+          const tokens = tokenize(cmdStr)
+          if (tokens.length === 0) { res.statusCode = 400; res.end('Empty command'); return }
+          const [cmd, ...args] = tokens
+          const workDir = cwd || process.cwd()
+          let stdout = ''
+          let stderr = ''
+          const child = spawn(cmd, args, { cwd: workDir, shell: false, env: process.env })
+          if (parsed.stdin != null) { child.stdin.write(String(parsed.stdin)); child.stdin.end() }
+          child.stdout.on('data', d => { stdout += d.toString() })
+          child.stderr.on('data', d => { stderr += d.toString() })
+          const timer = setTimeout(() => { child.kill('SIGTERM'); stderr += `\n[exec-bridge] timeout after ${timeout}ms` }, timeout)
+          child.on('close', (code) => {
+            clearTimeout(timer)
+            res.setHeader('Content-Type', 'application/json')
+            res.setHeader('Access-Control-Allow-Origin', '*')
+            res.end(JSON.stringify({ stdout: stdout.slice(0, 100_000), stderr: stderr.slice(0, 10_000), exitCode: code ?? 1 }))
+          })
+          child.on('error', (err) => {
+            clearTimeout(timer)
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ stdout: '', stderr: err.message, exitCode: 127 }))
+          })
+        })
+      })
+    },
+  }
+}
+
+export default defineConfig({
+  plugins: [react(), execBridgePlugin()],
+})
