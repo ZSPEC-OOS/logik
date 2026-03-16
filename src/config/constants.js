@@ -1,0 +1,51 @@
+// ─── Central constants ────────────────────────────────────────────────────────
+// All magic numbers live here. Edit this file to tune agent behaviour,
+// timeouts, and capability caps — changes propagate everywhere automatically.
+
+// ── Agent loop ────────────────────────────────────────────────────────────────
+export const AGENT_MAX_TURNS          = 40        // safety ceiling; prevents runaway loops
+export const AGENT_KEEP_TURNS         = 10        // message turns to retain (older pruned)
+
+// ── Diff viewer ───────────────────────────────────────────────────────────────
+export const DIFF_MAX_LINES           = 600       // max lines per side for LCS diff
+
+// ── Exec bridge ───────────────────────────────────────────────────────────────
+export const EXEC_BRIDGE_TIMEOUT_MS   = 60_000    // default shell command timeout (ms)
+export const EXEC_TOOL_PROBE_TIMEOUT  = 5_000     // tool version-probe timeout (ms)
+export const EXEC_LINT_TIMEOUT        = 15_000    // eslint/ts-node stdin timeout (ms)
+
+// ── ShadowContext indexer ─────────────────────────────────────────────────────
+export const SHADOW_MAX_FILES         = 5_000     // max repo files to index
+export const SHADOW_MAX_DEPTH         = 15        // max directory crawl depth
+export const SHADOW_MAX_CONTENT_FILES = 800       // max files to fetch content for
+export const SHADOW_MAX_CONTENT_SIZE  = 100_000   // max file size in bytes to index
+export const SHADOW_CACHE_TTL_MS      = 60 * 60 * 1000  // 1 hour session-storage TTL
+export const SHADOW_BATCH_SIZE        = 10        // files per content-fetch batch
+export const SHADOW_CONTENT_CAP       = 6_000     // chars per file stored in content index
+export const SHADOW_PREVIEW_CAP       = 1_200     // chars for quick relevance preview
+
+// ── Persistence ───────────────────────────────────────────────────────────────
+export const CONV_MAX_MESSAGES        = 20        // conversation messages to persist
+export const HISTORY_MAX_ITEMS        = 60        // prompt history entries to keep
+
+// ── Generation / remediation ─────────────────────────────────────────────────
+export const AUTOFIX_MAX_ATTEMPTS     = 5         // auto-remediation AI fix passes
+export const PLAN_MAX_FILES           = 20        // max files in a planner execution plan
+export const CONTEXT_FILES_LIMIT      = 8         // ambient context files injected per generation
+export const FILE_CONTENT_CAP_CHARS   = 20_000    // max existing file chars injected into prompt
+export const LOGIK_MD_CAP             = 8_000     // max LOGIK.md chars injected into prompts
+
+// ── Sandbox timeouts ─────────────────────────────────────────────────────────
+export const SANDBOX_JS_TIMEOUT_MS    = 5_000     // JS iframe execution budget (ms)
+export const SANDBOX_PY_TIMEOUT_MS    = 20_000    // Python/Pyodide execution budget (ms)
+export const SANDBOX_JS_GUARD_MS      = 9_000     // outer JS guard to clean up listeners
+export const SANDBOX_PY_GUARD_MS      = 25_000    // outer Python guard
+
+// ── Python sandbox ────────────────────────────────────────────────────────────
+export const PYODIDE_VERSION          = '0.27.3'  // update here to upgrade the Python sandbox
+
+// ── NLU / creativity enhancements ────────────────────────────────────────────
+export const STYLE_EXAMPLES_LIMIT     = 3         // codebase style excerpts injected per generation
+export const STYLE_EXCERPT_LINES      = 20        // lines per style excerpt
+export const THINKING_BUDGET_TOKENS   = 8000      // Anthropic extended-thinking token budget
+export const DEFAULT_TEMPERATURE      = 0.7       // default generation temperature
