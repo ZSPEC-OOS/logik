@@ -1,7 +1,14 @@
-import { memo } from 'react'
-import { clearApiKeys } from '../../services/aiService.js'
+import { memo, useState, useEffect } from 'react'
+import { clearApiKeys, saveModels } from '../../services/aiService.js'
 import { getRepo } from '../../services/githubService.js'
 import { parseGitHubUrl } from '../../utils/codeUtils.js'
+import {
+  loadFirebaseConfig,
+  saveFirebaseConfig,
+  initFirebase,
+  clearFirebaseConfig,
+  getFirebaseStatus,
+} from '../../services/firebaseService.js'
 
 // ─── LogikSettings ────────────────────────────────────────────────────────────
 // Settings drawer: GitHub credentials, theme picker, fine-tune sliders,
@@ -44,11 +51,155 @@ const LogikSettings = memo(function LogikSettings({
 
   // LOGIK.md
   logikMdDraft, setLogikMdDraft, onSaveLogikMd, isSavingLogikMd,
+
+  // AI models (API keys)
+  models, setModels,
 }) {
   const GHTOKEN_SS_KEY = 'logik:ghtoken'
 
+  // ── Firebase state ──────────────────────────────────────────────────────────
+  const [fbDraft, setFbDraft]   = useState(() => {
+    const cfg = loadFirebaseConfig()
+    return cfg ? JSON.stringify(cfg, null, 2) : ''
+  })
+  const [fbStatus, setFbStatus] = useState(() => getFirebaseStatus())
+  const [fbSaving, setFbSaving] = useState(false)
+  const [fbError,  setFbError]  = useState(null)
+
+  async function handleSaveFirebase() {
+    setFbError(null)
+    setFbSaving(true)
+    try {
+      const parsed = JSON.parse(fbDraft)
+      await initFirebase(parsed)
+      setFbStatus(getFirebaseStatus())
+    } catch (e) {
+      setFbError(e.message)
+    } finally {
+      setFbSaving(false)
+    }
+  }
+
+  function handleClearFirebase() {
+    clearFirebaseConfig()
+    setFbDraft('')
+    setFbStatus(getFirebaseStatus())
+    setFbError(null)
+  }
+
+  // ── Model API key helper ────────────────────────────────────────────────────
+  function updateModelKey(id, key) {
+    const updated = (models || []).map(m => m.id === id ? { ...m, apiKey: key } : m)
+    setModels(updated)
+    saveModels(updated)
+  }
+
   return (
     <div className="lk-drawer lk-drawer--settings">
+
+      {/* ── AI API & Services ─────────────────────────────────────────────── */}
+      <div className="lk-settings-section">
+        <div className="lk-settings-section-hd">
+          <span className="lk-settings-section-icon">◈</span>
+          AI API Keys
+        </div>
+        <div className="lk-settings-section-body">
+          <span className="lk-security-note">
+            Keys are encrypted in sessionStorage — cleared automatically when this tab closes.
+            If you set a Firebase Proxy URL below, the server holds the keys and these fields can be left blank.
+          </span>
+          {(models || []).map(m => (
+            <div key={m.id} className="lk-settings-model-row">
+              <div className="lk-settings-model-name">{m.name}</div>
+              <input
+                className="lk-input"
+                type="password"
+                placeholder={`API key for ${m.name}`}
+                value={m.apiKey || ''}
+                onChange={e => updateModelKey(m.id, e.target.value)}
+                autoComplete="off"
+              />
+              <span className="lk-hint">{m.baseUrl}</span>
+            </div>
+          ))}
+          <div className="lk-settings-model-row">
+            <div className="lk-settings-model-name">Firebase Proxy URL <span className="lk-hint-inline">(optional)</span></div>
+            <input
+              className="lk-input"
+              type="url"
+              placeholder="https://us-central1-your-project.cloudfunctions.net/api"
+              defaultValue={typeof import.meta !== 'undefined' ? (import.meta.env?.VITE_AI_PROXY_URL || '') : ''}
+              onChange={e => {
+                try { localStorage.setItem('logik:proxyUrl', e.target.value.trim()) } catch {}
+              }}
+            />
+            <span className="lk-hint">When set, AI calls are routed through your Cloud Function and API keys are managed server-side.</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Firebase ──────────────────────────────────────────────────────── */}
+      <div className="lk-settings-section">
+        <div className="lk-settings-section-hd">
+          <span className="lk-settings-section-icon">🔥</span>
+          Firebase / Cloud Storage
+          {fbStatus.configured && (
+            <span className="lk-settings-badge lk-settings-badge--ok">
+              {fbStatus.initialised ? '● connected' : '● config saved'}
+            </span>
+          )}
+        </div>
+        <div className="lk-settings-section-body">
+
+          {/* Setup instructions */}
+          <div className="lk-firebase-steps">
+            <div className="lk-firebase-steps-hd">Setup</div>
+            <ol className="lk-firebase-ol">
+              <li>Go to <strong>console.firebase.google.com</strong> → select or create a project</li>
+              <li>Project Settings → <em>Your apps</em> → add a <strong>Web app</strong></li>
+              <li>Copy the <code>firebaseConfig</code> object shown after registration</li>
+              <li>Paste it below (the entire object or JSON) and click <strong>Save &amp; Connect</strong></li>
+              <li>Enable services you want: <em>Firestore</em>, <em>Storage</em>, <em>Authentication</em> in the Firebase Console</li>
+              <li><em>Optional:</em> deploy a Cloud Functions backend and set the Proxy URL above to manage API keys server-side</li>
+            </ol>
+          </div>
+
+          <label className="lk-label">Firebase Config</label>
+          <textarea
+            className="lk-logikmd-editor lk-firebase-textarea"
+            placeholder={`Paste your Firebase config here, e.g.:\n{\n  "apiKey": "AIzaSy...",\n  "authDomain": "your-project.firebaseapp.com",\n  "projectId": "your-project",\n  "storageBucket": "your-project.appspot.com",\n  "messagingSenderId": "123456789",\n  "appId": "1:123456789:web:abcdef"\n}`}
+            value={fbDraft}
+            onChange={e => { setFbDraft(e.target.value); setFbError(null) }}
+            rows={9}
+            spellCheck={false}
+          />
+
+          {fbError && <div className="lk-firebase-error">{fbError}</div>}
+
+          {fbStatus.configured && fbStatus.projectId && (
+            <div className="lk-firebase-project">
+              Project: <strong>{fbStatus.projectId}</strong>
+              {fbStatus.initialised ? ' · SDK initialised' : ' · SDK not yet initialised'}
+            </div>
+          )}
+
+          <div className="lk-settings-row-actions">
+            <button
+              className="lk-btn lk-btn--primary lk-btn--small"
+              onClick={handleSaveFirebase}
+              disabled={fbSaving || !fbDraft.trim()}
+            >
+              {fbSaving ? 'Connecting…' : '🔥 Save & Connect'}
+            </button>
+            {fbStatus.configured && (
+              <button className="lk-btn lk-btn--small lk-btn--warn" onClick={handleClearFirebase}>
+                Disconnect
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Quick setup — paste a GitHub URL to fill owner + repo */}
       <div className="lk-field lk-field--url">
         <label className="lk-label">Quick Setup</label>

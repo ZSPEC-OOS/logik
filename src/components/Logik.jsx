@@ -154,7 +154,7 @@ function buildFileSystemPrompt(path, existingContent, lang, repoOwner, repoName,
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-export default function Logik({ onClose, models, selectedModelId, onModelChange }) {
+export default function Logik({ onClose, models, setModels, selectedModelId, onModelChange }) {
   const saved = loadSettings()
 
   // ── Config ─────────────────────────────────────────────────────────────
@@ -1593,6 +1593,7 @@ export default function Logik({ onClose, models, selectedModelId, onModelChange 
             logikMdDraft={logikMdDraft}     setLogikMdDraft={setLogikMdDraft}
             onSaveLogikMd={handleSaveLogikMd}
             isSavingLogikMd={isSavingLogikMd}
+            models={models}                setModels={setModels}
           />
         )}
 

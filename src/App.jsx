@@ -24,6 +24,7 @@ export default function App() {
   return (
     <Logik
       models={models}
+      setModels={setModels}
       selectedModelId={selectedModelId}
       onModelChange={(id) => setSelectedModelId(id)}
       onClose={() => {}}
