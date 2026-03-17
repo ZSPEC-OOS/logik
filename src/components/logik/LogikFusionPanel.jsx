@@ -119,7 +119,6 @@ const LogikFusionPanel = memo(function LogikFusionPanel({
   onAbsorb,        // () => void — runs the full absorb prompt
   isRunning,       // bool
   shadowStatus2,   // string | null
-  buildMode,       // bool
   // attach form state (passed from parent)
   repo2Owner, setRepo2Owner,
   repo2Name,  setRepo2Name,
@@ -172,7 +171,7 @@ const LogikFusionPanel = memo(function LogikFusionPanel({
   }
 
   return (
-    <div className={`lk-fusion-page${buildMode ? ' lk-fusion-page--build' : ''}`}>
+    <div className="lk-fusion-page">
 
       {/* ── Attach section ──────────────────────────────────────────────── */}
       <div className="lk-fusion-attach">
@@ -248,11 +247,11 @@ const LogikFusionPanel = memo(function LogikFusionPanel({
       {hasBothRepos && (
         <>
           <div className="lk-fusion-rituals-hd">Or choose a specific operation</div>
-          <div className={`lk-fusion-grid${buildMode ? ' lk-fusion-grid--build' : ''}`}>
+          <div className={`lk-fusion-grid`}>
             {FUSION_RITUALS.map(ritual => (
               <button
                 key={ritual.id}
-                className={`lk-fusion-btn${buildMode ? ' lk-fusion-btn--build' : ''}`}
+                className={`lk-fusion-btn`}
                 onClick={() => onRunRitual(resolvePrompt(ritual.prompt))}
                 disabled={isRunning}
                 title={ritual.description}
