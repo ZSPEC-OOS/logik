@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { runPromptWithRetry } from '../services/aiService'
-import { downloadLogikZip } from '../services/logikExporter'
 import {
   getRepo,
   getBranch,
@@ -1623,12 +1622,6 @@ export default function Logik({ onClose, models, selectedModelId, onModelChange 
             </div>
           )}
 
-          {!buildMode && <button
-            className="lk-btn lk-btn--small"
-            onClick={() => downloadLogikZip()}
-            title="Download LOGIK as a standalone app (ZIP)"
-            style={{ marginLeft: '0.5rem', flexShrink: 0 }}
-          >⬇ Export</button>}
         </div>
 
         {/* ── Drawers (overlay inside lk-main) ─────────────────────────────── */}
