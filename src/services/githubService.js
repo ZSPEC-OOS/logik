@@ -87,6 +87,19 @@ export async function listBranches(token, owner, repo) {
   return ghFetch(token, `/repos/${owner}/${repo}/branches?per_page=50`)
 }
 
+// Returns the last N commit SHAs that touched a specific file path (Claude Code-style revert).
+// Uses the GitHub Commits API with path filtering.
+export async function listFileCommits(token, owner, repo, path, branch, n = 2) {
+  try {
+    const encoded = encodeURIComponent(branch)
+    const data = await ghFetch(token, `/repos/${owner}/${repo}/commits?path=${encodeURIComponent(path)}&sha=${encoded}&per_page=${Math.min(n, 10)}`)
+    if (!Array.isArray(data)) return []
+    return data.map(c => ({ sha: c.sha, message: c.commit?.message?.split('\n')[0] || '' }))
+  } catch {
+    return []
+  }
+}
+
 // List files in a directory (skips binaries and large files)
 export async function getDirectoryContents(token, owner, repo, dirPath, branch = 'main') {
   try {

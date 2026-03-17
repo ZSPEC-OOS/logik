@@ -18,6 +18,45 @@
 import { callWithToolsStreaming } from './aiService.js'
 import { AGENT_MAX_TURNS, AGENT_KEEP_TURNS } from '../config/constants.js'
 
+// ── Session diary — Claude Code /compact pattern ──────────────────────────────
+// Accumulates a lightweight log of what has happened in the session.
+// When context pruning would silently drop turns, the diary is injected instead
+// as a compact digest so the model retains awareness of prior progress.
+function makeSessionDiary() {
+  const filesRead    = new Set()
+  const filesChanged = []    // [{path, action}] in order
+  const textSnippets = []    // first sentence of each model turn (capped at 120 chars)
+
+  return {
+    onFileRead(path)          { filesRead.add(path) },
+    onFileWrite(path, action) { filesChanged.push({ path, action }) },
+    onModelText(text) {
+      // Capture the first meaningful sentence of each model turn as a progress note
+      const snippet = text.replace(/\s+/g, ' ').trim().slice(0, 120)
+      if (snippet.length > 20) textSnippets.push(snippet)
+    },
+    hasContent() {
+      return filesRead.size > 0 || filesChanged.length > 0 || textSnippets.length > 0
+    },
+    buildDigest(droppedTurns) {
+      const lines = [
+        `[SESSION DIGEST — ${droppedTurns} earlier turn${droppedTurns !== 1 ? 's' : ''} compacted to free context space]`,
+      ]
+      if (filesRead.size > 0)
+        lines.push(`Files read: ${[...filesRead].slice(0, 20).join(', ')}`)
+      if (filesChanged.length > 0) {
+        const summary = filesChanged.map(f => `${f.path} (${f.action})`).join(', ')
+        lines.push(`Files changed: ${summary}`)
+      }
+      if (textSnippets.length > 0) {
+        lines.push('Key progress notes:')
+        textSnippets.slice(-6).forEach(s => lines.push(`  • ${s}`))
+      }
+      return lines.join('\n')
+    },
+  }
+}
+
 // ── Helpers to build the next conversation turn ───────────────────────────────
 
 // Aider-style per-turn reminder — injected into the conversation whenever an
@@ -69,11 +108,22 @@ function buildToolResultMessages(toolCalls, results, isAnthropic, rawAssistantCo
 // Prune old messages to keep context window bounded.
 // Always preserves the initial system+task messages (first 2) and the last
 // AGENT_KEEP_TURNS turn pairs.
-function pruneMessages(messages) {
+// When a diary is supplied and turns are actually dropped, injects a compact
+// digest (Claude Code /compact pattern) so the model retains session context.
+function pruneMessages(messages, diary = null) {
   const head = messages.slice(0, 2)
   const tail = messages.slice(2)
   const keep = AGENT_KEEP_TURNS * 2   // each turn = 1 assistant + 1 user
-  const trimmed = tail.length > keep ? tail.slice(-keep) : tail
+  if (tail.length <= keep) return messages
+
+  // Turns are about to be dropped — inject a digest if we have one
+  const droppedCount = Math.floor((tail.length - keep) / 2)
+  const trimmed = tail.slice(-keep)
+
+  if (diary?.hasContent()) {
+    const digestMsg = { role: 'user', content: diary.buildDigest(droppedCount) }
+    return [...head, digestMsg, ...trimmed]
+  }
   return [...head, ...trimmed]
 }
 
@@ -107,6 +157,7 @@ export async function runAgentLoop({
 
   const filesChanged = []
   const recentSigs   = []   // rolling window of tool-call signatures for loop detection
+  const diary        = makeSessionDiary()   // Claude Code-style session digest
 
   // Initial message — system prompt is injected as first user message
   // (both Anthropic and OpenAI accept a system field or a leading user message)
@@ -141,6 +192,14 @@ export async function runAgentLoop({
       return
     }
 
+    // ── Emit token usage (Claude Code-style ↑in ↓out accounting) ─────────
+    if (response.usage?.input || response.usage?.output) {
+      onEvent({ type: 'usage', inputTokens: response.usage.input, outputTokens: response.usage.output })
+    }
+
+    // ── Record model text in diary for compaction ──────────────────────
+    if (response.text) diary.onModelText(response.text)
+
     // ── Model is done ─────────────────────────────────────────────────────
     if (response.isDone || response.toolCalls.length === 0) {
       onEvent({ type: 'done', text: response.text, filesChanged })
@@ -156,11 +215,15 @@ export async function runAgentLoop({
       response.toolCalls.map(async (tc) => {
         try {
           const result = await executeTool(tc.name, tc.input)
-          if (tc.name === 'write_file' || tc.name === 'edit_file' || tc.name === 'delete_file') {
+          if (tc.name === 'write_file' || tc.name === 'edit_file' || tc.name === 'delete_file' || tc.name === 'revert_file') {
             const path = tc.input.path
             if (!filesChanged.includes(path)) filesChanged.push(path)
             const action = tc.name === 'write_file' ? 'write' : tc.name === 'delete_file' ? 'delete' : 'edit'
             onEvent({ type: 'file_write', path, action })
+            diary.onFileWrite(path, action)
+          } else if (tc.name === 'read_file' || tc.name === 'read_many_files') {
+            const paths = tc.name === 'read_many_files' ? (tc.input.paths || []) : [tc.input.path]
+            paths.forEach(p => diary.onFileRead(p))
           }
           onEvent({ type: 'tool_done', name: tc.name, result, error: null })
           return result
@@ -176,7 +239,7 @@ export async function runAgentLoop({
     const nextMessages = buildToolResultMessages(
       response.toolCalls, results, isAnthropic, response._raw,
     )
-    messages = pruneMessages([...messages, ...nextMessages])
+    messages = pruneMessages([...messages, ...nextMessages], diary)
 
     // ── Loop detection ────────────────────────────────────────────────────
     const sig = toolSignature(response.toolCalls)

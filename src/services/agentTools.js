@@ -210,6 +210,19 @@ export const AGENT_TOOLS = [
       required: ['action', 'task'],
     },
   },
+  {
+    name: 'revert_file',
+    description: 'Restore a file to its state before the last N commits that touched it. Use this to undo a mistake or a bad edit. commits_back=1 (default) restores to the state just before the most recent commit to this file.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        path:         { type: 'string', description: 'File path relative to repo root'                              },
+        commits_back: { type: 'number', description: 'How many commits back to restore (default 1, max 10)'         },
+        message:      { type: 'string', description: 'Commit message for the revert (optional)'                     },
+      },
+      required: ['path'],
+    },
+  },
 ]
 
 // System prompt injected at the start of every agent session.
