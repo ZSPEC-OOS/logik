@@ -69,6 +69,49 @@ async function tavilySearch(apiKey, query, maxResults, includeDomains) {
   return res.json()
 }
 
+// ── Aider-inspired helpers ────────────────────────────────────────────────────
+
+// When edit_file fails, show the closest matching region so the model can
+// self-correct without re-reading the whole file (Aider's side-by-side diagnostic).
+function findSimilarLines(content, oldStr, maxResults = 3) {
+  const target = oldStr.split('\n')[0].trim()
+  if (!target) return ''
+  // Extract words of 4+ chars as matching keys
+  const words = target.split(/\W+/).filter(w => w.length >= 4)
+  if (words.length === 0) return ''
+  const lines = content.split('\n')
+  const scored = []
+  for (let i = 0; i < Math.min(lines.length, 3000); i++) {
+    const score = words.filter(w => lines[i].includes(w)).length
+    if (score > 0) scored.push({ i, score })
+  }
+  scored.sort((a, b) => b.score - a.score || a.i - b.i)
+  return scored.slice(0, maxResults).map(({ i }) => {
+    const ctx = Math.min(oldStr.split('\n').length + 1, 8)
+    const s   = Math.max(0, i - 1)
+    const e   = Math.min(lines.length, i + ctx)
+    return lines.slice(s, e).map((l, idx) => `  ${s + idx + 1}: ${l}`).join('\n')
+  }).join('\n  ---\n')
+}
+
+// Conventional Commits message fallback (Aider commit-message pattern).
+// Used when the model doesn't supply an explicit commit message.
+function buildCommitMsg(action, path, userMsg) {
+  if (userMsg) return userMsg
+  const name = path.split('/').pop()
+  const stem = name.replace(/\.[^.]+$/, '')
+  const ext  = (name.match(/\.([^.]+)$/) || [])[1] || ''
+  const type =
+    action === 'delete'                    ? 'chore' :
+    action === 'write'                     ? 'feat'  :
+    /test|spec/i.test(name)                ? 'test'  :
+    /css|scss|less/i.test(ext)             ? 'style' :
+    /md|txt|rst/i.test(ext)               ? 'docs'  :
+    /config|\.env|rc/i.test(name)          ? 'chore' : 'fix'
+  const verb = action === 'delete' ? 'remove' : action === 'write' ? 'add' : 'update'
+  return `${type}(${stem}): ${verb} ${name}`
+}
+
 export function makeExecutor({ token, owner, repo, branch, onFileWrite, sourceRepoConfig, webSearchApiKey, bridgeAvailable }) {
   return async function executeTool(name, input) {
     switch (name) {
@@ -104,32 +147,35 @@ export function makeExecutor({ token, owner, repo, branch, onFileWrite, sourceRe
       case 'write_file': {
         const existing = await getFileContent(token, owner, repo, input.path, branch)
         const sha      = existing?.sha || null
-        const msg      = input.message || `agent: write ${input.path}`
+        const msg      = buildCommitMsg(sha ? 'edit' : 'write', input.path, input.message)
         await createOrUpdateFile(token, owner, repo, input.path, input.content, msg, branch, sha)
         onFileWrite?.(input.path, 'write')
         return `Written: ${input.path} (${input.content.split('\n').length} lines)`
       }
 
-      // ── edit_file ──────────────────────────────────────────────────────
+      // ── edit_file (with Aider-style similar-lines diagnostic on failure) ─
       case 'edit_file': {
         const file = await getFileContent(token, owner, repo, input.path, branch)
         if (!file?.content) return `File not found: ${input.path}`
         const current = decodeBase64(file.content)
 
         if (!current.includes(input.old_str)) {
-          // Fuzzy match: try trimming each line
+          // Tier 2: try stripping uniform leading whitespace
           const normCurrent = current.split('\n').map(l => l.trimStart()).join('\n')
           const normOld     = input.old_str.split('\n').map(l => l.trimStart()).join('\n')
           if (!normCurrent.includes(normOld)) {
-            return `edit_file failed: old_str not found in ${input.path}. Read the file first and use exact text.`
+            // Tier 3: show similar lines so the model can self-correct (Aider diagnostic)
+            const similar = findSimilarLines(current, input.old_str)
+            const hint = similar
+              ? `\n\nMost similar lines found in ${input.path}:\n${similar}\n\nCopy the exact text including all whitespace.`
+              : `\n\nUse grep or read_file to confirm the exact text before retrying.`
+            return `edit_file failed: old_str not found in ${input.path}.${hint}`
           }
-          // Fuzzy match found but exact failed — indentation mismatch
-          return `edit_file failed: old_str found in ${input.path} but with different leading whitespace. Read the file and copy the exact indentation.`
+          return `edit_file failed: old_str matched only after stripping indentation in ${input.path}. Use read_file (with start_line/end_line) to copy the exact whitespace.`
         }
 
         const updated = current.replace(input.old_str, input.new_str)
-
-        const msg = input.message || `agent: edit ${input.path}`
+        const msg = buildCommitMsg('edit', input.path, input.message)
         await createOrUpdateFile(token, owner, repo, input.path, updated, msg, branch, file.sha)
         onFileWrite?.(input.path, 'edit')
         return `Edited: ${input.path}`
@@ -139,7 +185,7 @@ export function makeExecutor({ token, owner, repo, branch, onFileWrite, sourceRe
       case 'delete_file': {
         const file = await getFileContent(token, owner, repo, input.path, branch)
         if (!file?.sha) return `File not found: ${input.path}`
-        const msg = input.message || `agent: delete ${input.path}`
+        const msg = buildCommitMsg('delete', input.path, input.message)
         await deleteFile(token, owner, repo, input.path, file.sha, msg, branch)
         onFileWrite?.(input.path, 'delete')
         return `Deleted: ${input.path}`
@@ -275,6 +321,20 @@ export function makeExecutor({ token, owner, repo, branch, onFileWrite, sourceRe
         } catch (err) {
           return `web_search error: ${err.message}`
         }
+      }
+
+      // ── lint_file ──────────────────────────────────────────────────────
+      // Aider runs lint automatically after edits; here the agent calls it proactively.
+      case 'lint_file': {
+        if (!bridgeAvailable) return 'lint_file requires the exec bridge (run with npm run dev).'
+        if (!/\.(js|jsx|ts|tsx)$/.test(input.path)) return `lint_file only supports .js/.jsx/.ts/.tsx (got ${input.path}).`
+        const out = await execBridge(
+          `npx eslint "${input.path}" --format compact 2>&1 | head -80`,
+          null,
+        )
+        if (!out || (out.includes('bridge') && out.includes('unavailable'))) return 'exec bridge unavailable.'
+        const clean = /0 errors/.test(out) || out.trim() === ''
+        return clean ? `No lint errors in ${input.path} ✓` : out.slice(0, 3000)
       }
 
       // ── todo ───────────────────────────────────────────────────────────

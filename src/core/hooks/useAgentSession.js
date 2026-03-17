@@ -8,11 +8,12 @@ import { makeExecutor }  from '../../services/agentExecutor.js'
 import { AGENT_TOOLS, buildAgentSystemPrompt } from '../../services/agentTools.js'
 import { shadowContext } from '../../services/shadowContext.js'
 
-// Read-only tools — used when planMode is active
+// Read-only tools — used when planMode is active (no writes, no shell exec)
 const PLAN_MODE_TOOLS = new Set([
   'read_file', 'list_directory', 'search_files',
+  'grep', 'read_many_files', 'web_fetch', 'web_search',
   'read_source_file', 'list_source_directory',
-  'web_search', 'todo',
+  'lint_file', 'todo',
 ])
 
 export function useAgentSession({
@@ -82,6 +83,7 @@ export function useAgentSession({
       sourceRepoConfig,
       planMode,
       !!webSearchApiKey,
+      shadowContext.buildRepoMap(3000),   // Aider-style symbol map ranked by centrality
     )
 
     const startId = logActivity('agent', `⚡ Agent starting — "${task.slice(0, 60)}"`)

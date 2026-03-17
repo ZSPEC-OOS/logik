@@ -20,20 +20,35 @@ import { AGENT_MAX_TURNS, AGENT_KEEP_TURNS } from '../config/constants.js'
 
 // ── Helpers to build the next conversation turn ───────────────────────────────
 
+// Aider-style per-turn reminder — injected into the conversation whenever an
+// edit_file call failed, keeping the exact-match rule continuously in scope.
+const EDIT_FAILURE_REMINDER =
+  '[REMINDER] edit_file requires exact whitespace in old_str. ' +
+  'Use grep to find the exact text, or read_file with start_line/end_line. ' +
+  'The diagnostic above shows the nearest matching lines.'
+
 // Anthropic expects tool results inside a user message as content blocks.
 // OpenAI expects each result as a message with role 'tool'.
 // We detect which format to use from the provider field set by callWithTools.
 function buildToolResultMessages(toolCalls, results, isAnthropic, rawAssistantContent) {
+  // Detect whether any edit_file calls failed — if so, append a reminder
+  const hadEditFailure = toolCalls.some((tc, i) =>
+    tc.name === 'edit_file' && String(results[i] ?? '').startsWith('edit_file failed')
+  )
+
   if (isAnthropic) {
     return [
       { role: 'assistant', content: rawAssistantContent },
       {
         role: 'user',
-        content: toolCalls.map((tc, i) => ({
-          type:        'tool_result',
-          tool_use_id: tc.id,
-          content:     String(results[i] ?? ''),
-        })),
+        content: [
+          ...toolCalls.map((tc, i) => ({
+            type:        'tool_result',
+            tool_use_id: tc.id,
+            content:     String(results[i] ?? ''),
+          })),
+          ...(hadEditFailure ? [{ type: 'text', text: EDIT_FAILURE_REMINDER }] : []),
+        ],
       },
     ]
   }
@@ -47,6 +62,7 @@ function buildToolResultMessages(toolCalls, results, isAnthropic, rawAssistantCo
       tool_call_id: tc.id,
       content:      String(results[i] ?? ''),
     })),
+    ...(hadEditFailure ? [{ role: 'user', content: EDIT_FAILURE_REMINDER }] : []),
   ]
 }
 

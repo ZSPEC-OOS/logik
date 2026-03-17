@@ -188,6 +188,17 @@ export const AGENT_TOOLS = [
     },
   },
   {
+    name: 'lint_file',
+    description: 'Run ESLint on a JS/TS file after writing or editing it. Returns errors with line numbers, or confirms no errors. Requires the exec bridge (npm run dev). Mirrors Aider\'s auto-lint behaviour.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'File path to lint (.js/.jsx/.ts/.tsx only)' },
+      },
+      required: ['path'],
+    },
+  },
+  {
     name: 'todo',
     description: 'Track your own tasks during complex multi-step operations. Call with action="add" to register a pending task, "in_progress" when starting it, and "done" when finished. Helps you stay organised and keeps the user informed of progress.',
     input_schema: {
@@ -204,7 +215,7 @@ export const AGENT_TOOLS = [
 // System prompt injected at the start of every agent session.
 // planMode=true  → read-only analysis; no file writes.
 // webSearch=true → web_search tool is active (Tavily key configured).
-export function buildAgentSystemPrompt(conventions, logikMd, repoOwner, repoName, bridgeAvailable, sourceRepoConfig = null, planMode = false, webSearch = false) {
+export function buildAgentSystemPrompt(conventions, logikMd, repoOwner, repoName, bridgeAvailable, sourceRepoConfig = null, planMode = false, webSearch = false, repoMap = null) {
   const hasSrc = !!(sourceRepoConfig?.owner && sourceRepoConfig?.repo)
   const srcLabel = hasSrc ? `${sourceRepoConfig.owner}/${sourceRepoConfig.repo}` : null
 
@@ -223,12 +234,13 @@ export function buildAgentSystemPrompt(conventions, logikMd, repoOwner, repoName
     !planMode && hasSrc ? `SOURCE repository (read-only):    ${srcLabel} (branch: ${sourceRepoConfig?.branch || 'main'})` : null,
     !planMode && hasSrc ? `` : null,
     planMode
-      ? `You have access to read_file (with optional start_line/end_line), read_many_files, list_directory, search_files, and grep to explore the codebase.`
-      : `You have access to tools that let you read files, write files, edit files, search the codebase, grep file contents, run shell commands, and create pull requests.`,
+      ? `You have access to read_file (with optional start_line/end_line), read_many_files, list_directory, search_files, grep, and lint_file to explore and analyse the codebase.`
+      : `You have access to tools that let you read files, write files, edit files, search the codebase, grep file contents, lint JS/TS files, run shell commands, and create pull requests.`,
     !planMode && hasSrc ? `You also have read_source_file and list_source_directory to read from the SOURCE repo.` : null,
     webSearch ? `You have web_search (Tavily) and web_fetch to look up documentation, errors, or research.` : `You have web_fetch to read URLs when the exec bridge is active.`,
     `Use grep to search file contents by regex — far faster than opening files one by one.`,
     `Use read_many_files to read several files in one call.`,
+    `Use lint_file after editing JS/TS files to catch errors before moving on.`,
     `Use update_memory to append important facts to LOGIK.md so they persist across sessions.`,
     `Use the todo tool to track tasks when working on complex multi-step operations.`,
     `Work autonomously — do not ask the user for clarification. Make smart decisions and get the task done.`,
@@ -266,6 +278,14 @@ export function buildAgentSystemPrompt(conventions, logikMd, repoOwner, repoName
     if (conventions.testFramework !== 'unknown') lines.push(`  Tests: ${conventions.testFramework}`)
     if (conventions.srcDir) lines.push(`  Source root: ${conventions.srcDir}/`)
     if (conventions.deps?.length) lines.push(`  Key deps: ${conventions.deps.slice(0, 12).join(', ')}`)
+  }
+
+  // Aider-style repo map: compact symbol index ranked by import-graph centrality.
+  // Gives the model an overview of what exists without requiring file reads.
+  if (repoMap) {
+    lines.push(``, `REPOSITORY MAP (${repoMap.split('\n').length} key files, ranked by centrality — read-only reference):`)
+    lines.push(repoMap)
+    lines.push(`Use grep or read_file to explore any file in detail.`)
   }
 
   if (logikMd) {
