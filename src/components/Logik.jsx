@@ -352,7 +352,7 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
   const { bridgeAvailable, callExecBridge, callExecBridgeStream } = useExecBridge()
 
   // ── Agent session — managed by hook ────────────────────────────────────
-  const activeModel      = models?.find(m => m.id === activeModelId)
+  const activeModel = models?.find(m => m.id === activeModelId) ?? models?.[0]
   const githubConfig     = { token: githubToken, owner: repoOwner, repo: repoName, branch: baseBranch }
   const sourceRepoConfig = hasBothRepos
     ? { token: repo2Token || githubToken, owner: repo2Owner, repo: repo2Name, branch: repo2Branch || 'main' }
