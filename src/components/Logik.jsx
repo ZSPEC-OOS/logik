@@ -2018,10 +2018,8 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
             {/* Right: action buttons */}
             <div className="lk-input-right">
               <span className="lk-kbd-hint">Ctrl+↵</span>
-              {busy ? (
-                <button className="lk-btn lk-btn--abort" onClick={handleAbort}>■ Stop</button>
-              ) : (
-                <>
+              <>
+
                   {/* Push button — only when there's generated code to push */}
                   {hasGithub && filePlan.some(e => e.code?.trim()) && (() => {
                     const hasDiffs  = filePlan.some(e => e.diffText?.trim())
@@ -2059,6 +2057,13 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
                     {agentSession.isAgentRunning ? 'Working…' : isGenerating || isPlanning || isAmplifying ? 'Thinking…' : 'Send'}
                   </button>
 
+                  {/* Terminate — always visible next to Send when running */}
+                  {busy && (
+                    <button className="lk-btn lk-btn--abort lk-btn--abort-inline" onClick={handleAbort} title="Stop">
+                      ■
+                    </button>
+                  )}
+
                   {/* Result summary after agent completes */}
                   {agentSession.agentSummary && (
                     <div className="lk-agent-summary">
@@ -2069,10 +2074,9 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
                       )}
                     </div>
                   )}
-                </>
-              )}
+              </>
             </div>
-          </div>
+          </div>{/* end lk-input-actions */}
         </div>{/* end lk-input-bar */}
         </>}{/* end !buildMode */}
 
