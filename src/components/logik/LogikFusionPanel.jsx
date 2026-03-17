@@ -115,37 +115,6 @@ const LogikFusionPanel = memo(function LogikFusionPanel({
   return (
     <div className={`lk-fusion-panel${buildMode ? ' lk-fusion-panel--build' : ''}`}>
 
-      {/* ── Repo header — only shown in tab mode (build mode uses topbar) ── */}
-      {!buildMode && (
-        <div className="lk-fusion-header">
-          <div className="lk-fusion-repos">
-            <div className="lk-fusion-repo lk-fusion-repo--source">
-              <span className="lk-fusion-repo-role">SOURCE</span>
-              <span className="lk-fusion-repo-name">{srcLabel}</span>
-              {shadowStatus2 && (
-                <span className="lk-fusion-repo-status">{shadowStatus2}</span>
-              )}
-            </div>
-            <div className="lk-fusion-arrow">⟶</div>
-            <div className="lk-fusion-repo lk-fusion-repo--target">
-              <span className="lk-fusion-repo-role">TARGET</span>
-              <span className="lk-fusion-repo-name">{tgtLabel}</span>
-            </div>
-          </div>
-          <p className="lk-fusion-desc">
-            Select a ritual — the agent reads source, identifies strengths, and integrates them into target.
-          </p>
-        </div>
-      )}
-
-      {/* ── Build mode heading ── */}
-      {buildMode && (
-        <p className="lk-fusion-build-heading">
-          Select a ritual to begin. The agent will read <strong>{srcLabel}</strong>, identify strengths, and integrate them into <strong>{tgtLabel}</strong>.
-        </p>
-      )}
-
-      {/* ── Ritual buttons ── */}
       <div className={`lk-fusion-grid${buildMode ? ' lk-fusion-grid--build' : ''}`}>
         {FUSION_RITUALS.map(ritual => (
           <button

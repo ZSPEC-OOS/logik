@@ -2879,39 +2879,44 @@ kbd {
 
 .lk-fusion-panel--build {
   flex: 1;
-  padding: 24px 32px 0;
-  gap: 24px;
+  padding: 20px;
+  gap: 16px;
+  justify-content: center;
 }
 
-.lk-fusion-build-heading {
-  font-size: 13px;
-  color: var(--lk-muted);
-  margin: 0;
-  line-height: 1.6;
-}
-.lk-fusion-build-heading strong { color: var(--lk-fg); }
-
-/* Bigger ritual buttons in build mode */
+/* Ritual grid — fills the entire build area */
 .lk-fusion-grid--build {
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+  align-content: start;
 }
 
+/* Each ritual button — large, dominant, tappable */
 .lk-fusion-btn--build {
-  padding: 18px 20px;
-  border-radius: 10px;
-  gap: 14px;
+  padding: 22px 20px;
+  border-radius: 12px;
+  gap: 16px;
+  min-height: 100px;
+  border-width: 1.5px;
+}
+.lk-fusion-btn--build:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 24px color-mix(in srgb, var(--lk-accent) 20%, transparent);
 }
 .lk-fusion-btn--build .lk-fusion-btn-icon {
-  font-size: 26px;
+  font-size: 30px;
   margin-top: 0;
+  flex-shrink: 0;
 }
 .lk-fusion-btn--build .lk-fusion-btn-label {
-  font-size: 15px;
+  font-size: 16px;
+  font-weight: 700;
 }
 .lk-fusion-btn--build .lk-fusion-btn-desc {
   font-size: 12px;
   line-height: 1.5;
+  color: var(--lk-muted);
 }
 
 /* Build mode input bar */
