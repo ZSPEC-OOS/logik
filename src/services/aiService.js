@@ -45,7 +45,7 @@ const DEFAULT_MODELS = [
     name: 'Kimi K2.5',
     apiKey: '',
     baseUrl: 'https://api.moonshot.cn/v1',
-    modelId: 'kimi-k2-5',
+    modelId: 'kimi-k2.5',
   },
 ]
 
@@ -72,7 +72,11 @@ export function loadModels() {
       ? parsed.filter(m => !LEGACY_PRESET_IDS.has(m.id))
       : null
 
-    const configs = (!migrated || migrated.length === 0) ? DEFAULT_MODELS : migrated
+    // Also fix the wrong modelId if it was saved as 'kimi-k2-5' (typo, should be 'kimi-k2.5')
+    const fixed = (migrated || []).map(m =>
+      m.id === 'preset-kimi-k2-5' && m.modelId === 'kimi-k2-5' ? { ...m, modelId: 'kimi-k2.5' } : m
+    )
+    const configs = (!fixed || fixed.length === 0) ? DEFAULT_MODELS : fixed
 
     // Load API keys from sessionStorage (tab-scoped)
     let keys = {}

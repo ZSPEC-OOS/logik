@@ -8,7 +8,7 @@ const AUTH_KEY = 'logik:authed'
 export default function App() {
   const [authed, setAuthed] = useState(() => localStorage.getItem(AUTH_KEY) === 'true')
   const [models, setModels] = useState(loadModels)
-  const [selectedModelId, setSelectedModelId] = useState('')
+  const [selectedModelId, setSelectedModelId] = useState(() => loadModels()[0]?.id || '')
 
   if (!authed) {
     return (
