@@ -1,13 +1,9 @@
 // ─── LogikFusionPanel ────────────────────────────────────────────────────────
-// Appears when both a TARGET and SOURCE GitHub repo are connected.
-// Provides preset "ritual" buttons that send deep extraction/integration
-// prompts to the agent — letting LOGIK pull strengths from any repo into itself.
+// Full-page Fusion view: attach a source repo, then absorb its best material.
 
 import { memo } from 'react'
 
 // ── Ritual definitions ────────────────────────────────────────────────────────
-// {src} and {tgt} are replaced at runtime with the actual owner/repo labels.
-
 const FUSION_RITUALS = [
   {
     id:          'deep-audit',
@@ -89,15 +85,47 @@ Focus especially on: error handling, retry logic, caching strategies, context ma
   },
 ]
 
+const ABSORB_PROMPT =
+`You are performing a DEEP FUSION ABSORB operation from SOURCE ({src}) into TARGET ({tgt}).
+
+This is a full multi-pass extraction. Work through every phase:
+
+PHASE 1 — MAP THE SOURCE
+Use list_source_directory to fully explore the source repo structure. Read package.json, README, and all top-level entry points with read_source_file. Build a complete mental model of what source does and how.
+
+PHASE 2 — IDENTIFY THE BEST MATERIAL
+Compare source capabilities against the target repo. Score each area (1-10) for integration value. Select everything scoring 6 or above: architecture patterns, utilities, services, error handling, state management, streaming, AI/agent logic, hooks, and any features the target lacks entirely.
+
+PHASE 3 — ABSORB
+For each selected item:
+1. Read the full source implementation with read_source_file
+2. Write or edit the corresponding file in the TARGET repo
+3. Adapt naming conventions, imports, and structure to match the target's existing style
+4. Never break existing functionality — only enhance
+
+PHASE 4 — REPORT
+Close with a structured summary:
+- What was absorbed (file-by-file)
+- Which source files it came from
+- Why it was chosen
+- What improved in the target`
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 const LogikFusionPanel = memo(function LogikFusionPanel({
-  sourceRepo,    // { owner, repo, branch }
-  targetRepo,    // { owner, repo, branch }
-  onRunRitual,   // (prompt: string) => void
-  isRunning,     // bool
-  shadowStatus2, // string | null — indexing status of source repo
-  buildMode,     // bool — full-screen takeover mode
+  sourceRepo,      // { owner, repo, branch }
+  targetRepo,      // { owner, repo, branch }
+  onRunRitual,     // (prompt: string) => void
+  onAbsorb,        // () => void — runs the full absorb prompt
+  isRunning,       // bool
+  shadowStatus2,   // string | null
+  buildMode,       // bool
+  // attach form state (passed from parent)
+  repo2Owner, setRepo2Owner,
+  repo2Name,  setRepo2Name,
+  repo2Branch, setRepo2Branch,
+  repo2Token,  setRepo2Token,
+  hasBothRepos,
 }) {
   const srcLabel = (sourceRepo?.owner && sourceRepo?.repo)
     ? `${sourceRepo.owner}/${sourceRepo.repo}`
@@ -107,31 +135,105 @@ const LogikFusionPanel = memo(function LogikFusionPanel({
     : 'target'
 
   function resolvePrompt(template) {
-    return template
-      .replace(/\{src\}/g, srcLabel)
-      .replace(/\{tgt\}/g, tgtLabel)
+    return template.replace(/\{src\}/g, srcLabel).replace(/\{tgt\}/g, tgtLabel)
+  }
+
+  function handleQuickPaste(e) {
+    const p = (() => {
+      try {
+        const u = e.target.value.trim().replace(/^https?:\/\//, '')
+        const parts = u.replace('github.com/', '').split('/')
+        if (parts.length >= 2) return { owner: parts[0], repo: parts[1].replace(/\.git$/, '') }
+      } catch {}
+      return null
+    })()
+    if (p) { setRepo2Owner(p.owner); setRepo2Name(p.repo) }
   }
 
   return (
-    <div className={`lk-fusion-panel${buildMode ? ' lk-fusion-panel--build' : ''}`}>
+    <div className={`lk-fusion-page${buildMode ? ' lk-fusion-page--build' : ''}`}>
 
-      <div className={`lk-fusion-grid${buildMode ? ' lk-fusion-grid--build' : ''}`}>
-        {FUSION_RITUALS.map(ritual => (
-          <button
-            key={ritual.id}
-            className={`lk-fusion-btn${buildMode ? ' lk-fusion-btn--build' : ''}`}
-            onClick={() => onRunRitual(resolvePrompt(ritual.prompt))}
-            disabled={isRunning}
-            title={ritual.description}
-          >
-            <span className="lk-fusion-btn-icon">{ritual.icon}</span>
-            <span className="lk-fusion-btn-body">
-              <span className="lk-fusion-btn-label">{ritual.label}</span>
-              <span className="lk-fusion-btn-desc">{ritual.description}</span>
+      {/* ── Attach section ──────────────────────────────────────────────── */}
+      <div className="lk-fusion-attach">
+        <div className="lk-fusion-attach-hd">
+          <span className="lk-fusion-attach-icon">⟳</span>
+          <span className="lk-fusion-attach-title">Fusion</span>
+          {hasBothRepos && (
+            <span className="lk-fusion-attach-connected">
+              {srcLabel} → {tgtLabel}
             </span>
-          </button>
-        ))}
+          )}
+        </div>
+
+        <div className="lk-fusion-attach-body">
+          <input
+            className="lk-input lk-fusion-attach-paste"
+            placeholder="Paste repo URL — github.com/owner/repo"
+            onChange={handleQuickPaste}
+          />
+          <div className="lk-fusion-attach-row">
+            <input className="lk-input" placeholder="owner" value={repo2Owner}
+              onChange={e => setRepo2Owner(e.target.value.trim())} />
+            <span className="lk-fusion-attach-sep">/</span>
+            <input className="lk-input" placeholder="repo" value={repo2Name}
+              onChange={e => setRepo2Name(e.target.value.trim())} />
+            <input className="lk-input lk-fusion-attach-branch" placeholder="branch" value={repo2Branch}
+              onChange={e => setRepo2Branch(e.target.value.trim())} />
+          </div>
+          <input className="lk-input" type="password" placeholder="Token (optional — reuses primary token)"
+            value={repo2Token} onChange={e => setRepo2Token(e.target.value)} autoComplete="off" />
+
+          {shadowStatus2 && (
+            <div className="lk-fusion-attach-status">{shadowStatus2}</div>
+          )}
+
+          <div className="lk-fusion-attach-actions">
+            {hasBothRepos && (
+              <button className="lk-btn lk-btn--small" onClick={() => {
+                setRepo2Owner(''); setRepo2Name(''); setRepo2Branch('main'); setRepo2Token('')
+              }}>Disconnect</button>
+            )}
+          </div>
+        </div>
       </div>
+
+      {/* ── Absorb button ───────────────────────────────────────────────── */}
+      <button
+        className="lk-fusion-absorb-btn"
+        disabled={!hasBothRepos || isRunning}
+        onClick={() => onRunRitual(resolvePrompt(ABSORB_PROMPT))}
+        title={hasBothRepos ? `Deep absorb — pull the most beneficial material from ${srcLabel} into ${tgtLabel}` : 'Attach a source repo first'}
+      >
+        <span className="lk-fusion-absorb-icon">⤓</span>
+        <span className="lk-fusion-absorb-body">
+          <span className="lk-fusion-absorb-label">Absorb</span>
+          <span className="lk-fusion-absorb-desc">Deep comparison — pulls the most beneficial material from source into target</span>
+        </span>
+      </button>
+
+      {/* ── Ritual grid ─────────────────────────────────────────────────── */}
+      {hasBothRepos && (
+        <>
+          <div className="lk-fusion-rituals-hd">Or choose a specific operation</div>
+          <div className={`lk-fusion-grid${buildMode ? ' lk-fusion-grid--build' : ''}`}>
+            {FUSION_RITUALS.map(ritual => (
+              <button
+                key={ritual.id}
+                className={`lk-fusion-btn${buildMode ? ' lk-fusion-btn--build' : ''}`}
+                onClick={() => onRunRitual(resolvePrompt(ritual.prompt))}
+                disabled={isRunning}
+                title={ritual.description}
+              >
+                <span className="lk-fusion-btn-icon">{ritual.icon}</span>
+                <span className="lk-fusion-btn-body">
+                  <span className="lk-fusion-btn-label">{ritual.label}</span>
+                  <span className="lk-fusion-btn-desc">{ritual.description}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
 
     </div>
   )
