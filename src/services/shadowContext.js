@@ -536,4 +536,6 @@ class ShadowContextStore {
   }
 }
 
-export const shadowContext = new ShadowContextStore()
+export { ShadowContextStore }
+export const shadowContext  = new ShadowContextStore()
+export const shadowContext2 = new ShadowContextStore()

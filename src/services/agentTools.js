@@ -104,19 +104,55 @@ export const AGENT_TOOLS = [
       required: ['title', 'head', 'base'],
     },
   },
+  {
+    name: 'read_source_file',
+    description: 'Read a file from the SOURCE (secondary) repository — use this to explore and learn from the source repo. Only available when a source repo is connected.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'File path relative to source repo root, e.g. src/services/agentLoop.js' },
+      },
+      required: ['path'],
+    },
+  },
+  {
+    name: 'list_source_directory',
+    description: 'List files and subdirectories in a directory of the SOURCE (secondary) repository. Use this to explore the source repo structure.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'Directory path in source repo, or empty string for root' },
+      },
+      required: ['path'],
+    },
+  },
 ]
 
 // System prompt injected at the start of every agent session
-export function buildAgentSystemPrompt(conventions, logikMd, repoOwner, repoName, bridgeAvailable) {
+export function buildAgentSystemPrompt(conventions, logikMd, repoOwner, repoName, bridgeAvailable, sourceRepoConfig = null) {
+  const hasSrc = !!(sourceRepoConfig?.owner && sourceRepoConfig?.repo)
+  const srcLabel = hasSrc ? `${sourceRepoConfig.owner}/${sourceRepoConfig.repo}` : null
+
   const lines = [
-    `You are LOGIK Agent, an autonomous AI coding assistant operating on the GitHub repository ${repoOwner}/${repoName}.`,
+    hasSrc
+      ? `You are LOGIK Agent, an autonomous AI coding assistant operating in FUSION MODE.`
+      : `You are LOGIK Agent, an autonomous AI coding assistant operating on the GitHub repository ${repoOwner}/${repoName}.`,
     ``,
+    hasSrc
+      ? `TARGET repository (read + write): ${repoOwner}/${repoName}`
+      : null,
+    hasSrc
+      ? `SOURCE repository (read-only):    ${srcLabel} (branch: ${sourceRepoConfig.branch || 'main'})`
+      : null,
+    hasSrc ? `` : null,
     `You have access to tools that let you read files, write files, edit files, search the codebase, run shell commands, and create pull requests.`,
+    hasSrc ? `You also have read_source_file and list_source_directory to read from the SOURCE repo.` : null,
     `Work autonomously — do not ask the user for clarification. Make smart decisions and get the task done.`,
     ``,
     `WORKFLOW:`,
     `1. Understand the task.`,
     `2. Explore the codebase using list_directory and search_files as needed.`,
+    hasSrc ? `2b. Explore the SOURCE repo using list_source_directory and read_source_file.` : null,
     `3. Read relevant files before modifying them.`,
     `4. Make changes using edit_file (for small changes) or write_file (for new files or rewrites).`,
     `5. Run tests or lint if available to verify correctness.`,
@@ -127,8 +163,10 @@ export function buildAgentSystemPrompt(conventions, logikMd, repoOwner, repoName
     `- Prefer edit_file over write_file for modifications to existing files.`,
     `- Never truncate code — write complete, production-ready implementations.`,
     `- Do not ask the user questions — proceed with best judgment.`,
+    hasSrc ? `- read_source_file and list_source_directory are READ-ONLY — never try to write to the source repo.` : null,
+    hasSrc ? `- All writes go to the TARGET repo (${repoOwner}/${repoName}) only.` : null,
     !bridgeAvailable ? `- run_command is not available (exec bridge offline).` : `- run_command is available — use it to verify your work.`,
-  ]
+  ].filter(l => l !== null)
 
   if (conventions && conventions.framework !== 'unknown') {
     lines.push(``, `PROJECT CONVENTIONS (follow exactly):`)

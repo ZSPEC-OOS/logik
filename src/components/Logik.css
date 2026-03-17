@@ -2654,3 +2654,159 @@ kbd {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ── Fusion Panel ────────────────────────────────────────────────────────── */
+.lk-fusion-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.lk-fusion-header {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lk-fusion-repos {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.lk-fusion-repo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--lk-border);
+  min-width: 140px;
+}
+
+.lk-fusion-repo--source {
+  border-color: color-mix(in srgb, var(--lk-accent) 40%, transparent);
+  background: color-mix(in srgb, var(--lk-accent) 5%, var(--lk-surface));
+}
+
+.lk-fusion-repo--target {
+  border-color: var(--lk-border);
+  background: var(--lk-surface);
+}
+
+.lk-fusion-repo-role {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--lk-muted);
+}
+
+.lk-fusion-repo--source .lk-fusion-repo-role {
+  color: var(--lk-accent);
+}
+
+.lk-fusion-repo-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--lk-fg);
+}
+
+.lk-fusion-repo-status {
+  font-size: 10px;
+  color: var(--lk-muted);
+}
+
+.lk-fusion-arrow {
+  font-size: 18px;
+  color: var(--lk-accent);
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+.lk-fusion-desc {
+  font-size: 11px;
+  color: var(--lk-muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.lk-fusion-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+}
+
+.lk-fusion-btn {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--lk-surface);
+  border: 1px solid var(--lk-border);
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+  color: var(--lk-fg);
+}
+
+.lk-fusion-btn:hover:not(:disabled) {
+  border-color: var(--lk-accent);
+  background: color-mix(in srgb, var(--lk-accent) 6%, var(--lk-surface));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--lk-accent) 20%, transparent);
+}
+
+.lk-fusion-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.lk-fusion-btn-icon {
+  font-size: 18px;
+  line-height: 1;
+  color: var(--lk-accent);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.lk-fusion-btn-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.lk-fusion-btn-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--lk-fg);
+}
+
+.lk-fusion-btn-desc {
+  font-size: 11px;
+  color: var(--lk-muted);
+  line-height: 1.4;
+}
+
+/* Settings — source repo section label with fusion badge */
+.lk-fusion-settings-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lk-fusion-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--lk-accent) 15%, transparent);
+  color: var(--lk-accent);
+  border: 1px solid color-mix(in srgb, var(--lk-accent) 30%, transparent);
+  letter-spacing: 0.03em;
+}

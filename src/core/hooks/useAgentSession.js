@@ -11,6 +11,7 @@ import { shadowContext } from '../../services/shadowContext.js'
 export function useAgentSession({
   modelConfig,       // {apiKey, baseUrl, modelId, …}
   githubConfig,      // {token, owner, repo, branch}
+  sourceRepoConfig,  // {token, owner, repo, branch} | null — secondary (read-only) repo
   bridgeAvailable,   // bool
   logActivity,       // (type, msg, detail?) => id
   updateActivity,    // (id, updates) => void
@@ -48,6 +49,7 @@ export function useAgentSession({
       owner:       githubConfig.owner,
       repo:        githubConfig.repo,
       branch:      githubConfig.branch,
+      sourceRepoConfig,
       onFileWrite: (path, action) => {
         setAgentFiles(prev => prev.includes(path) ? prev : [...prev, path])
         onFileWrite?.(path, action)
@@ -60,6 +62,7 @@ export function useAgentSession({
       githubConfig.owner || 'unknown',
       githubConfig.repo  || 'unknown',
       bridgeAvailable,
+      sourceRepoConfig,
     )
 
     const startId = logActivity('agent', `⚡ Agent starting — "${task.slice(0, 60)}"`)
@@ -157,7 +160,7 @@ export function useAgentSession({
       setIsAgentRunning(false)
       onPromptClear?.()
     }
-  }, [modelConfig, githubConfig, bridgeAvailable, logActivity, updateActivity, activityRef,
+  }, [modelConfig, githubConfig, sourceRepoConfig, bridgeAvailable, logActivity, updateActivity, activityRef,
       onFileWrite, onSetActiveTab, onSetError, onPromptClear])
 
   const abort = useCallback(() => {

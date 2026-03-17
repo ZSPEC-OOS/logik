@@ -41,7 +41,7 @@ async function execBridge(cmd, cwd) {
 }
 
 // ── Factory ───────────────────────────────────────────────────────────────────
-export function makeExecutor({ token, owner, repo, branch, onFileWrite }) {
+export function makeExecutor({ token, owner, repo, branch, onFileWrite, sourceRepoConfig }) {
   return async function executeTool(name, input) {
     switch (name) {
 
@@ -130,6 +130,25 @@ export function makeExecutor({ token, owner, repo, branch, onFileWrite }) {
         return pr?.html_url
           ? `PR created: ${pr.html_url} (#${pr.number})`
           : `PR creation failed`
+      }
+
+      // ── read_source_file ───────────────────────────────────────────────
+      case 'read_source_file': {
+        if (!sourceRepoConfig?.owner) return 'No source repository connected.'
+        const { token: sToken, owner: sOwner, repo: sRepo, branch: sBranch } = sourceRepoConfig
+        const file = await getFileContent(sToken || token, sOwner, sRepo, input.path, sBranch)
+        if (!file?.content) return `File not found in source repo: ${input.path}`
+        const content = decodeBase64(file.content)
+        return `--- [SOURCE: ${sOwner}/${sRepo}] ${input.path} (${content.split('\n').length} lines) ---\n${content.slice(0, 20000)}`
+      }
+
+      // ── list_source_directory ──────────────────────────────────────────
+      case 'list_source_directory': {
+        if (!sourceRepoConfig?.owner) return 'No source repository connected.'
+        const { token: sToken, owner: sOwner, repo: sRepo, branch: sBranch } = sourceRepoConfig
+        const items = await listDirectory(sToken || token, sOwner, sRepo, input.path || '', sBranch)
+        if (items.length === 0) return `Empty or not found in source repo: ${input.path || '/'}`
+        return items.map(i => `${i.type === 'dir' ? 'd' : 'f'} ${i.path}`).join('\n')
       }
 
       default:
