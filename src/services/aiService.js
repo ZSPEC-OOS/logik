@@ -41,41 +41,38 @@ function decrypt(text) {
 
 const DEFAULT_MODELS = [
   {
-    id: 'preset-claude-sonnet-46',
-    name: 'Claude Sonnet 4.6',
-    apiKey: '',
-    baseUrl: 'https://api.anthropic.com/v1',
-    modelId: 'claude-sonnet-4-6',
-  },
-  {
     id: 'preset-kimi-k2-5',
     name: 'Kimi K2.5',
     apiKey: '',
     baseUrl: 'https://api.moonshot.cn/v1',
     modelId: 'kimi-k2-5',
   },
-  {
-    id: 'preset-gpt-4o',
-    name: 'GPT-4o',
-    apiKey: '',
-    baseUrl: 'https://api.openai.com/v1',
-    modelId: 'gpt-4o',
-  },
-  {
-    id: 'preset-gemini-pro',
-    name: 'Gemini Pro',
-    apiKey: '',
-    baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
-    modelId: 'gemini-pro',
-  },
 ]
+
+// Preset catalogue — used by the "Add Model" button in Settings
+export const MODEL_PRESETS = [
+  { id: 'preset-claude-sonnet-46', name: 'Claude Sonnet 4.6', apiKey: '', baseUrl: 'https://api.anthropic.com/v1',                    modelId: 'claude-sonnet-4-6' },
+  { id: 'preset-gpt-4o',          name: 'GPT-4o',             apiKey: '', baseUrl: 'https://api.openai.com/v1',                       modelId: 'gpt-4o'            },
+  { id: 'preset-gemini-pro',      name: 'Gemini Pro',         apiKey: '', baseUrl: 'https://generativelanguage.googleapis.com/v1beta', modelId: 'gemini-pro'        },
+  { id: 'preset-custom',          name: 'Custom',             apiKey: '', baseUrl: '',                                                 modelId: ''                  },
+]
+
+const LEGACY_PRESET_IDS = new Set([
+  'preset-claude-sonnet-46', 'preset-gpt-4o', 'preset-gemini-pro',
+])
 
 export function loadModels() {
   try {
     // Load model configs (without API keys) from localStorage
     const raw    = localStorage.getItem(MODELS_KEY)
     const parsed = raw !== null ? JSON.parse(raw) : null
-    const configs = (!parsed || parsed.length === 0) ? DEFAULT_MODELS : parsed
+
+    // Migration: strip legacy presets that were removed from DEFAULT_MODELS
+    const migrated = parsed
+      ? parsed.filter(m => !LEGACY_PRESET_IDS.has(m.id))
+      : null
+
+    const configs = (!migrated || migrated.length === 0) ? DEFAULT_MODELS : migrated
 
     // Load API keys from sessionStorage (tab-scoped)
     let keys = {}

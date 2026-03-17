@@ -568,7 +568,7 @@
   box-shadow: 0 8px 30px rgba(0,0,0,0.4);
 }
 
-.lk-drawer--settings { padding: 14px 20px 12px; }
+.lk-drawer--settings { padding: 14px 20px 20px; max-height: calc(100vh - 44px); overflow-y: auto; }
 .lk-drawer--history  { padding: 10px 20px 12px; max-height: 200px; overflow-y: auto; }
 
 /* Quick-setup URL field (spans full grid width) */
@@ -2540,18 +2540,84 @@ kbd {
 .lk-settings-model-row {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
   padding-bottom: 10px;
   border-bottom: 1px solid color-mix(in srgb, var(--lk-border) 50%, transparent);
 }
 
-.lk-settings-model-row:last-child {
+.lk-settings-model-row:last-of-type {
   padding-bottom: 0;
   border-bottom: none;
 }
 
+.lk-settings-model-row-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .lk-settings-model-name {
   font-size: 11px;
+  font-weight: 600;
+  color: var(--lk-fg);
+}
+
+.lk-settings-model-remove {
+  background: none;
+  border: none;
+  color: var(--lk-muted);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0 2px;
+  font-family: inherit;
+}
+.lk-settings-model-remove:hover { color: #f87171; }
+
+.lk-settings-add-btn {
+  align-self: flex-start;
+  margin-top: 2px;
+}
+
+.lk-settings-add-model {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: color-mix(in srgb, var(--lk-accent) 4%, var(--lk-bg));
+  border: 1px solid color-mix(in srgb, var(--lk-border) 60%, transparent);
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.lk-settings-add-model-hd {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--lk-muted);
+  margin-bottom: 2px;
+}
+
+.lk-settings-preset-btn {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  background: var(--lk-surface);
+  border: 1px solid var(--lk-border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.12s, background 0.12s;
+}
+.lk-settings-preset-btn:hover {
+  border-color: var(--lk-accent);
+  background: color-mix(in srgb, var(--lk-accent) 8%, var(--lk-surface));
+}
+
+.lk-settings-preset-name {
+  font-size: 12px;
   font-weight: 600;
   color: var(--lk-fg);
 }

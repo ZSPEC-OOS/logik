@@ -1,5 +1,5 @@
 import { memo, useState, useEffect } from 'react'
-import { clearApiKeys, saveModels } from '../../services/aiService.js'
+import { clearApiKeys, saveModels, MODEL_PRESETS } from '../../services/aiService.js'
 import { getRepo } from '../../services/githubService.js'
 import { parseGitHubUrl } from '../../utils/codeUtils.js'
 import {
@@ -88,8 +88,34 @@ const LogikSettings = memo(function LogikSettings({
   }
 
   // ── Model API key helper ────────────────────────────────────────────────────
+  const [addModelOpen, setAddModelOpen] = useState(false)
+
   function updateModelKey(id, key) {
     const updated = (models || []).map(m => m.id === id ? { ...m, apiKey: key } : m)
+    setModels(updated)
+    saveModels(updated)
+  }
+
+  function updateModelField(id, field, val) {
+    const updated = (models || []).map(m => m.id === id ? { ...m, [field]: val } : m)
+    setModels(updated)
+    saveModels(updated)
+  }
+
+  function addPreset(preset) {
+    const already = (models || []).some(m => m.id === preset.id)
+    if (already) { setAddModelOpen(false); return }
+    const id = preset.id === 'preset-custom'
+      ? `custom-${Date.now()}`
+      : preset.id
+    const updated = [...(models || []), { ...preset, id }]
+    setModels(updated)
+    saveModels(updated)
+    setAddModelOpen(false)
+  }
+
+  function removeModel(id) {
+    const updated = (models || []).filter(m => m.id !== id)
     setModels(updated)
     saveModels(updated)
   }
@@ -101,16 +127,21 @@ const LogikSettings = memo(function LogikSettings({
       <div className="lk-settings-section">
         <div className="lk-settings-section-hd">
           <span className="lk-settings-section-icon">◈</span>
-          AI API Keys
+          AI Models
         </div>
         <div className="lk-settings-section-body">
           <span className="lk-security-note">
             Keys are encrypted in sessionStorage — cleared automatically when this tab closes.
-            If you set a Firebase Proxy URL below, the server holds the keys and these fields can be left blank.
           </span>
+
           {(models || []).map(m => (
             <div key={m.id} className="lk-settings-model-row">
-              <div className="lk-settings-model-name">{m.name}</div>
+              <div className="lk-settings-model-row-hd">
+                <span className="lk-settings-model-name">{m.name}</span>
+                {(models || []).length > 1 && (
+                  <button className="lk-settings-model-remove" onClick={() => removeModel(m.id)} title="Remove model">×</button>
+                )}
+              </div>
               <input
                 className="lk-input"
                 type="password"
@@ -119,22 +150,38 @@ const LogikSettings = memo(function LogikSettings({
                 onChange={e => updateModelKey(m.id, e.target.value)}
                 autoComplete="off"
               />
-              <span className="lk-hint">{m.baseUrl}</span>
+              {m.id.startsWith('custom-') && (
+                <>
+                  <input className="lk-input" placeholder="Model ID (e.g. gpt-4o)" value={m.modelId || ''}
+                    onChange={e => updateModelField(m.id, 'modelId', e.target.value)} />
+                  <input className="lk-input" placeholder="Base URL" value={m.baseUrl || ''}
+                    onChange={e => updateModelField(m.id, 'baseUrl', e.target.value)} />
+                </>
+              )}
+              {!m.id.startsWith('custom-') && <span className="lk-hint">{m.baseUrl}</span>}
             </div>
           ))}
-          <div className="lk-settings-model-row">
-            <div className="lk-settings-model-name">Firebase Proxy URL <span className="lk-hint-inline">(optional)</span></div>
-            <input
-              className="lk-input"
-              type="url"
-              placeholder="https://us-central1-your-project.cloudfunctions.net/api"
-              defaultValue={typeof import.meta !== 'undefined' ? (import.meta.env?.VITE_AI_PROXY_URL || '') : ''}
-              onChange={e => {
-                try { localStorage.setItem('logik:proxyUrl', e.target.value.trim()) } catch {}
-              }}
-            />
-            <span className="lk-hint">When set, AI calls are routed through your Cloud Function and API keys are managed server-side.</span>
-          </div>
+
+          {/* Add Model */}
+          {addModelOpen ? (
+            <div className="lk-settings-add-model">
+              <div className="lk-settings-add-model-hd">Choose a model to add</div>
+              {MODEL_PRESETS
+                .filter(p => !(models || []).some(m => m.id === p.id))
+                .map(p => (
+                  <button key={p.id} className="lk-settings-preset-btn" onClick={() => addPreset(p)}>
+                    <span className="lk-settings-preset-name">{p.name}</span>
+                    {p.baseUrl && <span className="lk-hint">{p.baseUrl}</span>}
+                  </button>
+                ))
+              }
+              <button className="lk-btn lk-btn--small" onClick={() => setAddModelOpen(false)}>Cancel</button>
+            </div>
+          ) : (
+            <button className="lk-btn lk-btn--small lk-settings-add-btn" onClick={() => setAddModelOpen(true)}>
+              + Add Model
+            </button>
+          )}
         </div>
       </div>
 
