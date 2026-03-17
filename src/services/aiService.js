@@ -548,7 +548,7 @@ export async function callWithTools(modelConfig, messages, tools, signal, system
     tools: openAITools,
     tool_choice: 'auto',
     messages,
-  })
+  }, modelConfig)
   const res = await fetchWithRetry(url, { ...options, signal })
   if (!res.ok) { const err = await res.text(); throw new Error(`AI API error ${res.status}: ${err}`) }
   const data = await res.json()

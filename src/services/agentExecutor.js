@@ -76,11 +76,11 @@ export function makeExecutor({ token, owner, repo, branch, onFileWrite, sourceRe
           if (!normCurrent.includes(normOld)) {
             return `edit_file failed: old_str not found in ${input.path}. Read the file first and use exact text.`
           }
+          // Fuzzy match found but exact failed — indentation mismatch
+          return `edit_file failed: old_str found in ${input.path} but with different leading whitespace. Read the file and copy the exact indentation.`
         }
 
-        const updated = current.includes(input.old_str)
-          ? current.replace(input.old_str, input.new_str)
-          : current  // fuzzy match only for the check; actual replace needs exact match
+        const updated = current.replace(input.old_str, input.new_str)
 
         const msg = input.message || `agent: edit ${input.path}`
         await createOrUpdateFile(token, owner, repo, input.path, updated, msg, branch, file.sha)
