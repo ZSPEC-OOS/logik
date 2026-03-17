@@ -2074,7 +2074,158 @@ kbd {
   .lk-theme-swatches { grid-template-columns: repeat(3, 1fr); }
 }
 
-/* ════════════════════════════════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════════════
+   MOBILE — iPhone SE / 12 / 13 / 14 / 15 / Pro / Plus  (≤ 430 px)
+   Designed to keep desktop layout fully intact above this breakpoint.
+   ══════════════════════════════════════════════════════════════════════ */
+@media (max-width: 430px) {
+
+  /* ── Sidebar: slim icon rail ─────────────────────────────────────── */
+  .lk-sidebar { width: 28px; }
+  .lk-sidebar-btn { width: 24px; height: 24px; font-size: 10px; padding: 0; }
+  .lk-sidebar-sep { width: 14px; margin: 3px auto; }
+  .lk-sidebar-shadow { width: 6px; height: 6px; }
+
+  /* ── Topbar: two-row compact layout ─────────────────────────────── */
+  .lk-topbar {
+    height: auto;
+    min-height: 44px;
+    flex-wrap: wrap;
+    padding: 5px 8px;
+    gap: 4px;
+    row-gap: 4px;
+  }
+  /* Row 1: icon + brand + spacer + model + settings */
+  .lk-brand-icon   { font-size: 0.95rem; }
+  .lk-brand-name   { font-size: 0.80rem; letter-spacing: 0.06em; }
+  .lk-brand-sub    { display: none; }   /* already hidden at 720px */
+  .lk-turn-badge   { display: none; }
+  .lk-shadow-badge { display: none; }
+  .lk-topbar-spacer { flex: 1; min-width: 4px; }
+  .lk-model-select { max-width: 95px; font-size: 0.65rem; padding: 3px 4px; }
+
+  /* Row 2: view toggle takes full width below row 1 */
+  .lk-view-toggle {
+    order: 10;
+    flex-basis: 100%;
+    justify-content: stretch;
+    border-radius: 8px;
+  }
+  .lk-view-toggle-btn {
+    flex: 1;
+    text-align: center;
+    padding: 4px 6px;
+    font-size: 10px;
+    border-radius: 6px;
+  }
+
+  /* Source chip: truncate long repo names */
+  .lk-source-chip { max-width: 110px; overflow: hidden; text-overflow: ellipsis; font-size: 10px; padding: 3px 8px; }
+
+  /* Source popover: bottom sheet instead of dropdown */
+  .lk-source-chip-wrap { position: static; }
+  .lk-source-popover {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    top: auto;
+    width: 100%;
+    max-height: 85vh;
+    overflow-y: auto;
+    border-radius: 14px 14px 0 0;
+    box-shadow: 0 -8px 40px rgba(0,0,0,0.5);
+    z-index: 300;
+    -webkit-overflow-scrolling: touch;
+    /* Safe area for iPhone home indicator */
+    padding-bottom: max(14px, env(safe-area-inset-bottom));
+  }
+
+  /* ── Tabs: horizontal scroll, no wrap ───────────────────────────── */
+  .lk-tabs {
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0 6px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .lk-tabs::-webkit-scrollbar { display: none; }
+  .lk-tab { padding: 0 10px; font-size: 0.66rem; letter-spacing: 0.02em; }
+  .lk-tab-actions { gap: 4px; }
+  .lk-lang-chip   { display: none; }
+
+  /* ── Input bar ───────────────────────────────────────────────────── */
+  .lk-input-bar {
+    padding: 6px 8px 8px;
+    /* Safe area for iPhone home indicator */
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+  .lk-textarea {
+    min-height: 48px;
+    font-size: 0.78rem;
+    padding: 8px 10px;
+  }
+  /* Cost + repo row: tighter */
+  .lk-cost-row  { display: none; }
+  .lk-repo-badge { font-size: 0.60rem; gap: 4px; max-width: 130px; }
+  .lk-repo-badge > span:nth-child(2) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 80px;
+    display: inline-block;
+  }
+  .lk-kbd-hint  { display: none; }
+
+  /* ── Buttons in input-right: smaller ────────────────────────────── */
+  .lk-btn { font-size: 0.72rem; padding: 5px 10px; }
+  .lk-btn-icon { font-size: 10px; }
+
+  /* ── Feed / output area ─────────────────────────────────────────── */
+  .lk-feed-output { padding: 0; }
+
+  /* ── Drawers: full-height scroll, 1-col grid ────────────────────── */
+  .lk-drawer--settings {
+    padding: 10px 12px;
+    overflow-y: auto;
+    max-height: calc(100dvh - 88px); /* leaves room for topbar */
+    -webkit-overflow-scrolling: touch;
+  }
+  .lk-drawer-grid { grid-template-columns: 1fr; }
+  .lk-theme-swatches { grid-template-columns: repeat(3, 1fr); }
+
+  /* ── Fusion panel: single column ────────────────────────────────── */
+  .lk-fusion-grid { grid-template-columns: 1fr; }
+  .lk-fusion-repos { flex-direction: column; gap: 6px; }
+  .lk-fusion-arrow { transform: rotate(90deg); align-self: center; }
+
+  /* ── Activity feed: tighter ─────────────────────────────────────── */
+  .lk-activity-entry { padding: 6px 10px; gap: 6px; }
+  .lk-activity-msg   { font-size: 0.72rem; }
+
+  /* ── Modal: full-width ───────────────────────────────────────────── */
+  .lk-modal {
+    width: 100%;
+    margin: 0;
+    max-height: 90dvh;
+    border-radius: 14px 14px 0 0;
+    align-self: flex-end;
+    padding: 14px 12px;
+  }
+  .lk-modal-overlay { align-items: flex-end; }
+
+  /* ── Onboarding panel ───────────────────────────────────────────── */
+  .lk-onboarding { padding: 16px 12px; }
+}
+
+/* ── iPhone safe area support (notch / Dynamic Island / home bar) ─── */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .lk-input-bar {
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+}
+
+
    MODAL OVERLAY — shared by Amplifier Confirm + Push Preview
    ════════════════════════════════════════════════════════════════════ */
 .lk-modal-overlay {
