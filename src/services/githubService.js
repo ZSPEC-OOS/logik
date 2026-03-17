@@ -126,7 +126,7 @@ export async function listDirectory(token, owner, repo, dirPath, branch = 'main'
         if (a.type !== b.type) return a.type === 'dir' ? -1 : 1
         return a.name.localeCompare(b.name)
       })
-      .map(f => ({ name: f.name, path: f.path, type: f.type }))
+      .map(f => ({ name: f.name, path: f.path, type: f.type, size: f.size ?? null }))
   } catch {
     return []
   }

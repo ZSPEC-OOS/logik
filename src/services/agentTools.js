@@ -7,11 +7,13 @@ import { LOGIK_MD_CAP } from '../config/constants.js'
 export const AGENT_TOOLS = [
   {
     name: 'read_file',
-    description: 'Read the full contents of a file from the connected GitHub repository.',
+    description: 'Read the contents of a file from the connected GitHub repository. For large files use start_line/end_line to read only the relevant section.',
     input_schema: {
       type: 'object',
       properties: {
-        path: { type: 'string', description: 'File path relative to repo root, e.g. src/App.jsx' },
+        path:       { type: 'string', description: 'File path relative to repo root, e.g. src/App.jsx' },
+        start_line: { type: 'number', description: 'First line to return (1-indexed, optional)'         },
+        end_line:   { type: 'number', description: 'Last line to return (inclusive, optional)'           },
       },
       required: ['path'],
     },
@@ -127,6 +129,52 @@ export const AGENT_TOOLS = [
     },
   },
   {
+    name: 'grep',
+    description: 'Regex search across indexed file contents. Returns matching lines with file paths and line numbers. Covers the indexed portion of the repo (~800 files). Much faster than reading files one by one.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        pattern:     { type: 'string',  description: 'Regular expression pattern to search for'                       },
+        path:        { type: 'string',  description: 'Restrict to files whose path starts with this prefix (optional)'},
+        ignore_case: { type: 'boolean', description: 'Case-insensitive search (default false)'                        },
+      },
+      required: ['pattern'],
+    },
+  },
+  {
+    name: 'read_many_files',
+    description: 'Read multiple files in a single call — more efficient than separate read_file calls. Returns all contents concatenated with file headers.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        paths: { type: 'array', items: { type: 'string' }, description: 'Array of file paths relative to repo root (max 20)' },
+      },
+      required: ['paths'],
+    },
+  },
+  {
+    name: 'web_fetch',
+    description: 'Fetch a URL and return its text content. Best for reading documentation, API specs, or GitHub raw files. When the exec bridge is active the response is automatically converted from HTML to plain text.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'Full URL to fetch (https://…)' },
+      },
+      required: ['url'],
+    },
+  },
+  {
+    name: 'update_memory',
+    description: 'Append a persistent note to LOGIK.md in the repository root. Use this to record important decisions, conventions, or facts that should survive across agent sessions.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        note: { type: 'string', description: 'Note to append (Markdown format, one concise paragraph)' },
+      },
+      required: ['note'],
+    },
+  },
+  {
     name: 'web_search',
     description: 'Search the web for up-to-date information, documentation, error messages, or research. Returns a summary and top results with URLs. Requires a Tavily API key in Settings → Web Search.',
     input_schema: {
@@ -175,18 +223,21 @@ export function buildAgentSystemPrompt(conventions, logikMd, repoOwner, repoName
     !planMode && hasSrc ? `SOURCE repository (read-only):    ${srcLabel} (branch: ${sourceRepoConfig?.branch || 'main'})` : null,
     !planMode && hasSrc ? `` : null,
     planMode
-      ? `You have access to read_file, list_directory, and search_files to explore the codebase.`
-      : `You have access to tools that let you read files, write files, edit files, search the codebase, run shell commands, and create pull requests.`,
+      ? `You have access to read_file (with optional start_line/end_line), read_many_files, list_directory, search_files, and grep to explore the codebase.`
+      : `You have access to tools that let you read files, write files, edit files, search the codebase, grep file contents, run shell commands, and create pull requests.`,
     !planMode && hasSrc ? `You also have read_source_file and list_source_directory to read from the SOURCE repo.` : null,
-    webSearch ? `You have web_search to look up documentation, errors, or research.` : null,
+    webSearch ? `You have web_search (Tavily) and web_fetch to look up documentation, errors, or research.` : `You have web_fetch to read URLs when the exec bridge is active.`,
+    `Use grep to search file contents by regex — far faster than opening files one by one.`,
+    `Use read_many_files to read several files in one call.`,
+    `Use update_memory to append important facts to LOGIK.md so they persist across sessions.`,
     `Use the todo tool to track tasks when working on complex multi-step operations.`,
     `Work autonomously — do not ask the user for clarification. Make smart decisions and get the task done.`,
     ``,
     `WORKFLOW:`,
     `1. Use todo(add) to list the steps you plan to take for complex tasks.`,
     planMode
-      ? `2. Explore the codebase using list_directory, read_file, and search_files.`
-      : `2. Explore the codebase using list_directory and search_files as needed.`,
+      ? `2. Explore the codebase: grep for symbols/patterns, list_directory for structure, read_many_files for multiple files at once.`
+      : `2. Explore the codebase: grep for patterns, search_files for relevance, list_directory for structure.`,
     !planMode && hasSrc ? `2b. Explore the SOURCE repo using list_source_directory and read_source_file.` : null,
     planMode
       ? `3. Analyse the relevant code and produce a clear, actionable plan or explanation.`
