@@ -1591,6 +1591,7 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
             onSaveLogikMd={handleSaveLogikMd}
             isSavingLogikMd={isSavingLogikMd}
             models={models}                setModels={setModels}
+            onLogout={onLogout}            userEmail={userEmail}
           />
         )}
 

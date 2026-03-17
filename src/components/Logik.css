@@ -2506,6 +2506,24 @@ kbd {
   margin-bottom: 2px;
 }
 
+.lk-settings-account {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: color-mix(in srgb, var(--lk-accent) 4%, var(--lk-surface));
+  border-bottom: 1px solid var(--lk-border);
+  gap: 10px;
+}
+
+.lk-settings-account-email {
+  font-size: 11px;
+  color: var(--lk-fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .lk-settings-section-hd {
   display: flex;
   align-items: center;
@@ -2520,13 +2538,37 @@ kbd {
   color: var(--lk-fg);
 }
 
+.lk-settings-section-hd--btn {
+  width: 100%;
+  text-align: left;
+  background: color-mix(in srgb, var(--lk-accent) 6%, var(--lk-surface));
+  border: none;
+  cursor: pointer;
+}
+.lk-settings-section-hd--btn:hover {
+  background: color-mix(in srgb, var(--lk-accent) 10%, var(--lk-surface));
+}
+
+.lk-settings-add-custom {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.lk-settings-add-custom .lk-input {
+  flex: 1;
+}
+
+.lk-settings-model-name-input {
+  font-weight: 600;
+  font-size: 12px;
+}
+
 .lk-settings-section-icon {
   font-size: 14px;
   color: var(--lk-accent);
 }
 
 .lk-settings-badge {
-  margin-left: auto;
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.04em;
