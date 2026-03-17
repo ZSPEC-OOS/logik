@@ -117,24 +117,31 @@ export async function signOutUser() {
 // Subscribe to auth state changes.  Returns an unsubscribe function.
 // callback(user | null) is called immediately with the current state
 // and again whenever the state changes.
+//
+// Uses a flag+ref pattern so the cleanup function always works even
+// though the subscription is set up asynchronously.
 export function onAuthStateChange(callback) {
-  // If auth isn't ready yet, initialise first
-  if (!_auth) {
-    initFirebaseSync()
-    // Delay slightly so Firebase SDK fully initialises
-    let unsub = () => {}
-    getAuth().then(auth => {
-      import('firebase/auth').then(({ onAuthStateChanged }) => {
-        unsub = onAuthStateChanged(auth, callback)
-      })
-    })
-    return () => unsub()
+  let realUnsub = null
+  let cancelled = false
+
+  ;(async () => {
+    try {
+      const auth = await getAuth()
+      if (cancelled) return
+      const { onAuthStateChanged } = await import('firebase/auth')
+      if (cancelled) return
+      realUnsub = onAuthStateChanged(auth, callback)
+    } catch (err) {
+      console.warn('[Logik] onAuthStateChange setup failed:', err.message)
+      // Fire callback with null so the app doesn't stay on the loading screen
+      if (!cancelled) callback(null)
+    }
+  })()
+
+  return () => {
+    cancelled = true
+    realUnsub?.()
   }
-  let unsub = () => {}
-  import('firebase/auth').then(({ onAuthStateChanged }) => {
-    unsub = onAuthStateChanged(_auth, callback)
-  })
-  return () => unsub()
 }
 
 // ── Storage ───────────────────────────────────────────────────────────────────
@@ -224,31 +231,28 @@ export async function saveUserSettings(uid, settings) {
   }
 }
 
+// Returns the decrypted settings object, null if the document doesn't exist yet,
+// or throws on a real error (permissions, network) so the caller can decide.
 export async function loadUserSettings(uid) {
   if (!uid) return null
-  try {
-    const db = await getFirestore()
-    const { doc, getDoc } = await import('firebase/firestore')
-    const snap = await getDoc(doc(db, 'users', uid, 'data', 'settings'))
-    if (!snap.exists()) return null
+  const db = await getFirestore()
+  const { doc, getDoc } = await import('firebase/firestore')
+  const snap = await getDoc(doc(db, 'users', uid, 'data', 'settings'))
+  if (!snap.exists()) return null    // New user — no settings saved yet (not an error)
 
-    const data = snap.data()
-    // Decrypt sensitive fields
-    SENSITIVE_FIELDS.forEach(f => {
-      if (data[f]) data[f] = xorDecipher(data[f], uid)
-    })
-    // Decrypt model API keys
-    if (Array.isArray(data.models)) {
-      data.models = data.models.map(m => ({
-        ...m,
-        apiKey: m.apiKey ? xorDecipher(m.apiKey, uid) : '',
-      }))
-    }
-    return data
-  } catch (err) {
-    console.warn('[Logik] loadUserSettings failed:', err.message)
-    return null
+  const data = snap.data()
+  // Decrypt sensitive fields
+  SENSITIVE_FIELDS.forEach(f => {
+    if (data[f]) data[f] = xorDecipher(data[f], uid)
+  })
+  // Decrypt model API keys
+  if (Array.isArray(data.models)) {
+    data.models = data.models.map(m => ({
+      ...m,
+      apiKey: m.apiKey ? xorDecipher(m.apiKey, uid) : '',
+    }))
   }
+  return data
 }
 
 // ── Auto-init on module load ──────────────────────────────────────────────────

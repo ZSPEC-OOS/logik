@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import LoginScreen from './components/LoginScreen'
 import Logik from './components/Logik'
-import { loadModels, saveModels } from './services/aiService'
+import { loadModels, saveModels, saveSearchKey } from './services/aiService'
 import {
   onAuthStateChange,
   signOutUser,
@@ -10,71 +10,100 @@ import {
 } from './services/firebaseService'
 
 // ── Populate localStorage + sessionStorage from cloud settings ────────────────
-// Called after a successful login so that Logik's loadSettings() reads
-// the cloud-persisted values on first render.
+// Called after login so that Logik's loadSettings() reads the cloud values on
+// first render.  Each value uses the same storage path that Logik writes to,
+// so the component initialises transparently with persisted data.
 function injectCloudSettings(settings) {
   if (!settings) return
   try {
-    const SETTINGS_KEY    = 'logik:settings'
-    const GHTOKEN_SS_KEY  = 'logik:ghtoken'
-    const GHTOKEN2_SS_KEY = 'logik:ghtoken2'
-    const SEARCH_KEY_SS   = 'logik:searchkey'
+    const { githubToken, repo2Token, webSearchApiKey, models,
+            permissionMode, _v, _ts, ...rest } = settings
 
-    // Non-sensitive settings → localStorage
-    const {
-      githubToken, repo2Token, webSearchApiKey, models,
-      _v, _ts,
-      ...rest
-    } = settings
+    // Non-secret settings → localStorage (same key Logik uses)
+    localStorage.setItem('logik:settings', JSON.stringify(rest))
 
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(rest))
+    // permissionMode has its own key in localStorage
+    if (permissionMode) localStorage.setItem('logik:permMode', permissionMode)
 
-    // Sensitive tokens → sessionStorage
-    if (githubToken  !== undefined) sessionStorage.setItem(GHTOKEN_SS_KEY,  githubToken  || '')
-    if (repo2Token   !== undefined) sessionStorage.setItem(GHTOKEN2_SS_KEY, repo2Token   || '')
-    if (webSearchApiKey !== undefined) sessionStorage.setItem(SEARCH_KEY_SS, webSearchApiKey || '')
+    // GitHub tokens → sessionStorage as plaintext (matching Logik's read path)
+    if (githubToken  !== undefined) sessionStorage.setItem('logik:ghtoken',  githubToken  || '')
+    if (repo2Token   !== undefined) sessionStorage.setItem('logik:ghtoken2', repo2Token   || '')
 
-    // Models (with API keys) → aiService storage
-    if (Array.isArray(models) && models.length > 0) {
-      saveModels(models)
-    }
+    // Search key must be stored via saveSearchKey() because loadSearchKey() decrypts it
+    if (webSearchApiKey !== undefined) saveSearchKey(webSearchApiKey || '')
+
+    // Models (with API keys) → aiService storage (handles its own encryption)
+    if (Array.isArray(models) && models.length > 0) saveModels(models)
   } catch (err) {
     console.warn('[Logik] injectCloudSettings failed:', err.message)
   }
 }
 
+// ── Loading splash ────────────────────────────────────────────────────────────
+function Splash({ msg = 'Loading…' }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      height: '100vh', background: '#0d0d14', color: '#555',
+      fontFamily: "'EB Garamond', Georgia, serif", fontSize: '1rem', gap: '0.5rem',
+    }}>
+      <span style={{ color: '#a78bfa' }}>◈</span>{msg}
+    </div>
+  )
+}
+
 export default function App() {
-  // authChecked: false until Firebase resolves the initial auth state
-  const [authChecked,  setAuthChecked]  = useState(false)
-  const [authUser,     setAuthUser]     = useState(null)
-  // settingsReady: true once we've loaded (or confirmed absence of) cloud settings
+  // Three-phase state:
+  //   authChecked=false  → Firebase resolving initial auth state (show splash)
+  //   authUser=null      → Not logged in (show LoginScreen)
+  //   settingsReady=false → Logged in but loading Firestore (show splash)
+  //   settingsReady=true  → Ready (show Logik)
+  const [authChecked,   setAuthChecked]   = useState(false)
+  const [authUser,      setAuthUser]      = useState(null)
   const [settingsReady, setSettingsReady] = useState(false)
+  const [cloudError,    setCloudError]    = useState('')
 
   const [models,          setModels]          = useState(loadModels)
   const [selectedModelId, setSelectedModelId] = useState(() => loadModels()[0]?.id || '')
 
-  // Debounce ref for cloud saves — avoids a Firestore write on every keystroke
-  const saveTimerRef = useRef(null)
+  // Debounce ref — avoids a Firestore write on every keystroke
+  const saveTimerRef       = useRef(null)
+  const pendingSettingsRef = useRef({})   // always an object, never null
+  const authUserRef        = useRef(null) // stable ref so callbacks don't stale-close over authUser
 
-  // Latest full settings snapshot, kept in a ref so the save callback is stable
-  const pendingSettingsRef = useRef(null)
-
-  // ── Firebase auth listener ────────────────────────────────────────────────
+  // ── Firebase auth listener — SINGLE SOURCE OF TRUTH ──────────────────────
+  // We do NOT set authUser from the LoginScreen onLogin callback.
+  // This listener fires when Firebase confirms login, giving us time to load
+  // Firestore settings BEFORE rendering Logik (so it initialises with correct values).
   useEffect(() => {
     const unsub = onAuthStateChange(async (user) => {
       if (user) {
-        // Load cloud settings and hydrate localStorage before rendering Logik
-        const cloud = await loadUserSettings(user.uid)
+        authUserRef.current = user
+        setCloudError('')
+
+        // Load cloud settings and hydrate localStorage before mounting Logik
+        let cloud = null
+        try {
+          cloud = await loadUserSettings(user.uid)
+        } catch (err) {
+          // Real error (permissions, network) — log it and proceed with local defaults
+          console.warn('[Logik] Could not load cloud settings:', err.message)
+          setCloudError('Could not load cloud settings — using local data. Check Firestore rules.')
+        }
+
         if (cloud) {
           injectCloudSettings(cloud)
-          // Reload models from storage (now populated from cloud)
           const freshModels = loadModels()
           setModels(freshModels)
           setSelectedModelId(freshModels[0]?.id || '')
+          // Seed pending ref so the first handleSetModels call has full context
+          pendingSettingsRef.current = cloud
         }
+
         setAuthUser(user)
         setSettingsReady(true)
       } else {
+        authUserRef.current = null
         setAuthUser(null)
         setSettingsReady(false)
       }
@@ -88,97 +117,78 @@ export default function App() {
     pendingSettingsRef.current = settings
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(() => {
-      if (pendingSettingsRef.current)
-        saveUserSettings(uid, pendingSettingsRef.current)
-    }, 1500)   // save 1.5s after the last change
+      saveUserSettings(uid, pendingSettingsRef.current).catch(err =>
+        console.warn('[Logik] Cloud save failed:', err.message)
+      )
+    }, 1500)
   }, [])
 
-  // ── Handle settings changes from Logik ────────────────────────────────────
-  // Logik calls this whenever any setting changes (github tokens, theme, etc.)
+  // ── Settings changes from Logik (github tokens, theme, repo config, etc.) ──
+  // Logik calls this whenever any persisted setting changes.
+  // We merge with the latest models so the cloud doc is always complete.
   const handleSettingsChanged = useCallback((settings) => {
-    if (!authUser) return
-    scheduleCloudSave(authUser.uid, { ...settings, models })
-  }, [authUser, models, scheduleCloudSave])
+    const uid = authUserRef.current?.uid
+    if (!uid) return
+    scheduleCloudSave(uid, { ...settings, models: loadModels() })
+  }, [scheduleCloudSave])
 
-  // ── Handle model changes from LogikSettings ───────────────────────────────
-  // Wrap setModels so model/key changes also sync to Firestore
+  // ── Model changes from LogikSettings (API key entered/changed) ────────────
   const handleSetModels = useCallback((updated) => {
     setModels(updated)
-    if (!authUser) return
-    scheduleCloudSave(authUser.uid, { ...pendingSettingsRef.current, models: updated })
-  }, [authUser, scheduleCloudSave])
+    const uid = authUserRef.current?.uid
+    if (!uid) return
+    scheduleCloudSave(uid, { ...pendingSettingsRef.current, models: updated })
+  }, [scheduleCloudSave])
 
   // ── Logout ────────────────────────────────────────────────────────────────
   const handleLogout = useCallback(async () => {
+    // Flush any pending save before signing out
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current)
-      // Flush any pending save before signing out
-      if (pendingSettingsRef.current && authUser)
-        await saveUserSettings(authUser.uid, { ...pendingSettingsRef.current, models })
+      const uid = authUserRef.current?.uid
+      if (uid && pendingSettingsRef.current)
+        await saveUserSettings(uid, { ...pendingSettingsRef.current, models: loadModels() })
+          .catch(() => {})
     }
-    await signOutUser()
-    // Clear local session data
+    await signOutUser().catch(() => {})
+    // Clear sensitive local session data
     try {
       sessionStorage.removeItem('logik:ghtoken')
       sessionStorage.removeItem('logik:ghtoken2')
       sessionStorage.removeItem('logik:searchkey')
       sessionStorage.removeItem('wrkflow:keys')
+      sessionStorage.removeItem('wrkflow:sk')
     } catch {}
-    setAuthUser(null)
-    setSettingsReady(false)
-    setModels(loadModels)
-  }, [authUser, models])
+    pendingSettingsRef.current = {}
+    setModels(loadModels())
+  }, [])
 
   // ── Render ────────────────────────────────────────────────────────────────
-  // While Firebase is resolving the initial auth state, show a minimal spinner
-  if (!authChecked) {
-    return (
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        height: '100vh', background: '#0d0d14', color: '#555',
-        fontFamily: "'EB Garamond', Georgia, serif", fontSize: '1rem',
-      }}>
-        <span style={{ color: '#a78bfa', marginRight: '0.5rem' }}>◈</span>
-        Loading…
-      </div>
-    )
-  }
-
-  if (!authUser) {
-    return (
-      <LoginScreen
-        onLogin={(user) => {
-          setAuthUser(user)
-          setSettingsReady(true)
-        }}
-      />
-    )
-  }
-
-  // Show spinner while cloud settings are being fetched on first login
-  if (!settingsReady) {
-    return (
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        height: '100vh', background: '#0d0d14', color: '#555',
-        fontFamily: "'EB Garamond', Georgia, serif", fontSize: '1rem',
-      }}>
-        <span style={{ color: '#a78bfa', marginRight: '0.5rem' }}>◈</span>
-        Loading your settings…
-      </div>
-    )
-  }
+  if (!authChecked)   return <Splash />
+  if (!authUser)      return <LoginScreen />
+  if (!settingsReady) return <Splash msg="Loading your settings…" />
 
   return (
-    <Logik
-      models={models}
-      setModels={handleSetModels}
-      selectedModelId={selectedModelId}
-      onModelChange={(id) => setSelectedModelId(id)}
-      onClose={() => {}}
-      onSettingsChanged={handleSettingsChanged}
-      onLogout={handleLogout}
-      userEmail={authUser.email}
-    />
+    <>
+      {cloudError && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
+          background: '#7f1d1d', color: '#fca5a5', padding: '0.5rem 1rem',
+          fontSize: '0.8rem', textAlign: 'center',
+        }}>
+          ⚠ {cloudError}
+        </div>
+      )}
+      <Logik
+        models={models}
+        setModels={handleSetModels}
+        selectedModelId={selectedModelId}
+        onModelChange={(id) => setSelectedModelId(id)}
+        onClose={() => {}}
+        onSettingsChanged={handleSettingsChanged}
+        onLogout={handleLogout}
+        userEmail={authUser.email}
+      />
+    </>
   )
 }

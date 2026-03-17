@@ -1,6 +1,11 @@
 import { useState } from 'react'
 import { signInWithEmail, signUpWithEmail } from '../services/firebaseService.js'
 
+// LoginScreen does NOT receive an onLogin callback — the Firebase auth state
+// listener in App.jsx is the single source of truth.  After a successful
+// sign-in the form stays in loading state until Firebase confirms the session
+// and App.jsx unmounts this component.
+
 // Human-friendly labels for Firebase Auth error codes
 function authErrorMsg(code) {
   switch (code) {
@@ -16,7 +21,7 @@ function authErrorMsg(code) {
   }
 }
 
-export default function LoginScreen({ onLogin }) {
+export default function LoginScreen() {
   const [mode,     setMode]     = useState('signin')   // 'signin' | 'signup'
   const [email,    setEmail]    = useState('')
   const [password, setPassword] = useState('')
@@ -28,13 +33,14 @@ export default function LoginScreen({ onLogin }) {
     setError('')
     setLoading(true)
     try {
-      const user = mode === 'signup'
+      mode === 'signup'
         ? await signUpWithEmail(email.trim(), password)
         : await signInWithEmail(email.trim(), password)
-      onLogin(user)
+      // Success: keep loading=true so the button stays in its loading state
+      // while Firebase fires onAuthStateChanged and App.jsx unmounts us.
+      // Do NOT call setLoading(false) here.
     } catch (err) {
       setError(authErrorMsg(err.code))
-    } finally {
       setLoading(false)
     }
   }
