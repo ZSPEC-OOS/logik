@@ -138,16 +138,37 @@ const LogikFusionPanel = memo(function LogikFusionPanel({
     return template.replace(/\{src\}/g, srcLabel).replace(/\{tgt\}/g, tgtLabel)
   }
 
-  function handleQuickPaste(e) {
-    const p = (() => {
-      try {
-        const u = e.target.value.trim().replace(/^https?:\/\//, '')
-        const parts = u.replace('github.com/', '').split('/')
-        if (parts.length >= 2) return { owner: parts[0], repo: parts[1].replace(/\.git$/, '') }
-      } catch {}
+  // Parse a GitHub URL into { owner, repo, branch }
+  // Handles formats:
+  //   github.com/owner/repo
+  //   github.com/owner/repo.git
+  //   github.com/owner/repo/tree/branch-name
+  //   github.com/owner/repo/tree/branch/subpath  (only first segment used)
+  function parseGitHubRepoUrl(raw) {
+    try {
+      const clean = raw.trim().replace(/^https?:\/\//, '').replace(/^git@github\.com:/, 'github.com/')
+      if (!clean.includes('github.com')) return null
+      const after = clean.replace(/^.*github\.com\//, '')
+      const parts  = after.split('/')
+      if (parts.length < 2) return null
+      const owner  = parts[0]
+      const repo   = parts[1].replace(/\.git$/, '')
+      // /tree/<branch> is at parts[2] === 'tree', parts[3] === branch
+      const branch = (parts[2] === 'tree' && parts[3]) ? parts[3] : null
+      return { owner, repo, branch }
+    } catch {
       return null
-    })()
-    if (p) { setRepo2Owner(p.owner); setRepo2Name(p.repo) }
+    }
+  }
+
+  function handleQuickPaste(e) {
+    const parsed = parseGitHubRepoUrl(e.target.value)
+    if (!parsed) return
+    setRepo2Owner(parsed.owner)
+    setRepo2Name(parsed.repo)
+    if (parsed.branch) setRepo2Branch(parsed.branch)
+    // Clear the paste field after autofill
+    e.target.value = ''
   }
 
   return (
@@ -168,7 +189,19 @@ const LogikFusionPanel = memo(function LogikFusionPanel({
         <div className="lk-fusion-attach-body">
           <input
             className="lk-input lk-fusion-attach-paste"
-            placeholder="Paste repo URL — github.com/owner/repo"
+            placeholder="Paste a GitHub URL to auto-fill all fields"
+            onPaste={e => {
+              // Intercept paste — fill fields instantly, clear the input
+              const text = e.clipboardData.getData('text')
+              const parsed = parseGitHubRepoUrl(text)
+              if (parsed) {
+                e.preventDefault()
+                setRepo2Owner(parsed.owner)
+                setRepo2Name(parsed.repo)
+                if (parsed.branch) setRepo2Branch(parsed.branch)
+                e.target.value = ''
+              }
+            }}
             onChange={handleQuickPaste}
           />
           <div className="lk-fusion-attach-row">
