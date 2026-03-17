@@ -41,7 +41,30 @@ async function execBridge(cmd, cwd) {
 }
 
 // ── Factory ───────────────────────────────────────────────────────────────────
-export function makeExecutor({ token, owner, repo, branch, onFileWrite, sourceRepoConfig }) {
+// ── Web search via Tavily ─────────────────────────────────────────────────────
+// Tavily explicitly supports browser-side requests (CORS-enabled).
+// In dev mode requests are proxied through Vite to avoid any CORS edge cases.
+const IS_DEV_EXEC = typeof import.meta !== 'undefined' && import.meta.env?.DEV
+const TAVILY_URL = IS_DEV_EXEC ? '/api/proxy/tavily/search' : 'https://api.tavily.com/search'
+
+async function tavilySearch(apiKey, query, maxResults, includeDomains) {
+  const res = await fetch(TAVILY_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      api_key:         apiKey,
+      query,
+      search_depth:    'basic',
+      include_answer:  true,
+      max_results:     Math.min(maxResults || 5, 10),
+      include_domains: includeDomains || [],
+    }),
+  })
+  if (!res.ok) throw new Error(`Tavily ${res.status}: ${await res.text()}`)
+  return res.json()
+}
+
+export function makeExecutor({ token, owner, repo, branch, onFileWrite, sourceRepoConfig, webSearchApiKey }) {
   return async function executeTool(name, input) {
     switch (name) {
 
@@ -149,6 +172,33 @@ export function makeExecutor({ token, owner, repo, branch, onFileWrite, sourceRe
         const items = await listDirectory(sToken || token, sOwner, sRepo, input.path || '', sBranch)
         if (items.length === 0) return `Empty or not found in source repo: ${input.path || '/'}`
         return items.map(i => `${i.type === 'dir' ? 'd' : 'f'} ${i.path}`).join('\n')
+      }
+
+      // ── web_search ─────────────────────────────────────────────────────
+      case 'web_search': {
+        if (!webSearchApiKey) {
+          return 'Web search is not configured. Add a Tavily API key in Settings → Web Search, then reload.'
+        }
+        try {
+          const data = await tavilySearch(webSearchApiKey, input.query, input.max_results, input.include_domains)
+          const lines = []
+          if (data.answer) lines.push(`Answer: ${data.answer}\n`)
+          for (const r of (data.results || []).slice(0, 8)) {
+            lines.push(`[${r.title}](${r.url})`)
+            if (r.content) lines.push(r.content.slice(0, 400))
+            lines.push('')
+          }
+          return lines.join('\n').trim() || 'No results found.'
+        } catch (err) {
+          return `web_search error: ${err.message}`
+        }
+      }
+
+      // ── todo ───────────────────────────────────────────────────────────
+      case 'todo': {
+        const icons = { add: '📋', in_progress: '⚙', done: '✓' }
+        const icon = icons[input.action] || '📋'
+        return `${icon} [${input.action}] ${input.task}`
       }
 
       default:

@@ -119,10 +119,47 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: path => path.replace(/^\/api\/proxy\/openai/, '/v1'),
       },
+      // Gemini uses Google's OpenAI-compatible endpoint (/v1beta/openai/...)
       '/api/proxy/gemini': {
         target: 'https://generativelanguage.googleapis.com',
         changeOrigin: true,
-        rewrite: path => path.replace(/^\/api\/proxy\/gemini/, '/v1beta'),
+        rewrite: path => path.replace(/^\/api\/proxy\/gemini/, '/v1beta/openai'),
+      },
+      // ── New providers ────────────────────────────────────────────────────
+      '/api/proxy/groq': {
+        target: 'https://api.groq.com',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/api\/proxy\/groq/, '/openai/v1'),
+      },
+      '/api/proxy/mistral': {
+        target: 'https://api.mistral.ai',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/api\/proxy\/mistral/, '/v1'),
+      },
+      '/api/proxy/codestral': {
+        target: 'https://codestral.mistral.ai',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/api\/proxy\/codestral/, '/v1'),
+      },
+      '/api/proxy/deepseek': {
+        target: 'https://api.deepseek.com',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/api\/proxy\/deepseek/, '/v1'),
+      },
+      '/api/proxy/xai': {
+        target: 'https://api.x.ai',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/api\/proxy\/xai/, '/v1'),
+      },
+      '/api/proxy/openrouter': {
+        target: 'https://openrouter.ai',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/api\/proxy\/openrouter/, '/api/v1'),
+      },
+      '/api/proxy/tavily': {
+        target: 'https://api.tavily.com',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/api\/proxy\/tavily/, ''),
       },
     },
   },

@@ -49,16 +49,49 @@ const DEFAULT_MODELS = [
   },
 ]
 
-// Preset catalogue — used by the "Add Model" button in Settings
+// ── Preset catalogue — used by the "Add Model" button in Settings ─────────────
+// Organised by provider.  baseUrl must include any path prefix the provider
+// puts before /chat/completions (e.g. Groq uses /openai/v1, xAI uses /v1).
 export const MODEL_PRESETS = [
-  { id: 'preset-claude-sonnet-46', name: 'Claude Sonnet 4.6', apiKey: '', baseUrl: 'https://api.anthropic.com/v1',                    modelId: 'claude-sonnet-4-6' },
-  { id: 'preset-gpt-4o',          name: 'GPT-4o',             apiKey: '', baseUrl: 'https://api.openai.com/v1',                       modelId: 'gpt-4o'            },
-  { id: 'preset-gemini-pro',      name: 'Gemini Pro',         apiKey: '', baseUrl: 'https://generativelanguage.googleapis.com/v1beta', modelId: 'gemini-pro'        },
-  { id: 'preset-custom',          name: 'Custom',             apiKey: '', baseUrl: '',                                                 modelId: ''                  },
+  // ── Anthropic ──────────────────────────────────────────────────────────────
+  { id: 'preset-claude-opus-46',   name: 'Claude Opus 4.6',      apiKey: '', baseUrl: 'https://api.anthropic.com/v1',                         modelId: 'claude-opus-4-6'            },
+  { id: 'preset-claude-sonnet-46', name: 'Claude Sonnet 4.6',    apiKey: '', baseUrl: 'https://api.anthropic.com/v1',                         modelId: 'claude-sonnet-4-6'          },
+  { id: 'preset-claude-haiku-45',  name: 'Claude Haiku 4.5',     apiKey: '', baseUrl: 'https://api.anthropic.com/v1',                         modelId: 'claude-haiku-4-5-20251001'  },
+  // ── OpenAI ─────────────────────────────────────────────────────────────────
+  { id: 'preset-gpt-4-1',          name: 'GPT-4.1',              apiKey: '', baseUrl: 'https://api.openai.com/v1',                            modelId: 'gpt-4.1'                    },
+  { id: 'preset-gpt-4o',           name: 'GPT-4o',               apiKey: '', baseUrl: 'https://api.openai.com/v1',                            modelId: 'gpt-4o'                     },
+  { id: 'preset-gpt-4o-mini',      name: 'GPT-4o mini',          apiKey: '', baseUrl: 'https://api.openai.com/v1',                            modelId: 'gpt-4o-mini'                },
+  { id: 'preset-o4-mini',          name: 'o4-mini',              apiKey: '', baseUrl: 'https://api.openai.com/v1',                            modelId: 'o4-mini'                    },
+  { id: 'preset-o3',               name: 'o3',                   apiKey: '', baseUrl: 'https://api.openai.com/v1',                            modelId: 'o3'                         },
+  // ── Google Gemini (OpenAI-compat endpoint) ─────────────────────────────────
+  { id: 'preset-gemini-25-pro',    name: 'Gemini 2.5 Pro',       apiKey: '', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', modelId: 'gemini-2.5-pro-preview-03-25' },
+  { id: 'preset-gemini-20-flash',  name: 'Gemini 2.0 Flash',     apiKey: '', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', modelId: 'gemini-2.0-flash'             },
+  { id: 'preset-gemini-15-pro',    name: 'Gemini 1.5 Pro',       apiKey: '', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', modelId: 'gemini-1.5-pro'               },
+  // ── Groq (free tier, fast inference) ─────────────────────────────────────
+  { id: 'preset-groq-llama33',     name: 'Llama 3.3 70B (Groq)', apiKey: '', baseUrl: 'https://api.groq.com/openai/v1',                       modelId: 'llama-3.3-70b-versatile'    },
+  { id: 'preset-groq-deepseek',    name: 'DeepSeek R1 (Groq)',   apiKey: '', baseUrl: 'https://api.groq.com/openai/v1',                       modelId: 'deepseek-r1-distill-llama-70b' },
+  // ── Mistral ────────────────────────────────────────────────────────────────
+  { id: 'preset-mistral-large',    name: 'Mistral Large',        apiKey: '', baseUrl: 'https://api.mistral.ai/v1',                            modelId: 'mistral-large-latest'       },
+  { id: 'preset-codestral',        name: 'Codestral',            apiKey: '', baseUrl: 'https://codestral.mistral.ai/v1',                      modelId: 'codestral-latest'           },
+  // ── DeepSeek ───────────────────────────────────────────────────────────────
+  { id: 'preset-deepseek-v3',      name: 'DeepSeek V3',          apiKey: '', baseUrl: 'https://api.deepseek.com/v1',                          modelId: 'deepseek-chat'              },
+  { id: 'preset-deepseek-r1',      name: 'DeepSeek R1',          apiKey: '', baseUrl: 'https://api.deepseek.com/v1',                          modelId: 'deepseek-reasoner'          },
+  // ── xAI / Grok ─────────────────────────────────────────────────────────────
+  { id: 'preset-grok-3',           name: 'Grok 3',               apiKey: '', baseUrl: 'https://api.x.ai/v1',                                  modelId: 'grok-3'                     },
+  { id: 'preset-grok-3-mini',      name: 'Grok 3 Mini',          apiKey: '', baseUrl: 'https://api.x.ai/v1',                                  modelId: 'grok-3-mini'                },
+  // ── OpenRouter (meta-router — one key, hundreds of models) ─────────────────
+  { id: 'preset-openrouter',       name: 'OpenRouter',           apiKey: '', baseUrl: 'https://openrouter.ai/api/v1',                         modelId: 'meta-llama/llama-3.3-70b-instruct:free' },
+  // ── Ollama (local — no key needed) ─────────────────────────────────────────
+  { id: 'preset-ollama',           name: 'Ollama (local)',        apiKey: 'ollama', baseUrl: 'http://localhost:11434/v1',                     modelId: 'llama3.2'                   },
+  // ── Custom ─────────────────────────────────────────────────────────────────
+  { id: 'preset-custom',           name: 'Custom',               apiKey: '', baseUrl: '',                                                     modelId: ''                           },
 ]
 
+// IDs that were once automatically included but have since been removed from
+// DEFAULT_MODELS.  They are silently stripped from saved localStorage configs
+// on next load so users don't see orphaned entries they never manually added.
 const LEGACY_PRESET_IDS = new Set([
-  'preset-claude-sonnet-46', 'preset-gpt-4o', 'preset-gemini-pro',
+  // (none currently — kept for future migrations)
 ])
 
 export function loadModels() {
@@ -104,6 +137,23 @@ export function saveModels(models) {
   const keys = {}
   models.forEach(m => { if (m.apiKey) keys[m.id] = m.apiKey })
   sessionStorage.setItem(KEYS_SS_KEY, encrypt(JSON.stringify(keys)))
+}
+
+// ── Web-search API key (Tavily) ───────────────────────────────────────────────
+const SEARCH_KEY_SS = 'logik:searchkey'
+
+export function loadSearchKey() {
+  try {
+    const raw = sessionStorage.getItem(SEARCH_KEY_SS)
+    return raw ? decrypt(raw) : ''
+  } catch { return '' }
+}
+
+export function saveSearchKey(key) {
+  try {
+    if (key) sessionStorage.setItem(SEARCH_KEY_SS, encrypt(key))
+    else      sessionStorage.removeItem(SEARCH_KEY_SS)
+  } catch {}
 }
 
 // Wipe all stored API keys from both storages
@@ -187,14 +237,33 @@ const PROXY_URL = import.meta.env?.VITE_AI_PROXY_URL || null
 const IS_DEV = import.meta.env?.DEV ?? false
 function devProxyUrl(baseUrl) {
   if (!IS_DEV) return baseUrl
-  if (baseUrl.includes('moonshot.cn'))         return '/api/proxy/moonshot'
-  if (baseUrl.includes('api.anthropic.com'))   return '/api/proxy/anthropic'
-  if (baseUrl.includes('api.openai.com'))      return '/api/proxy/openai'
-  if (baseUrl.includes('googleapis.com'))      return '/api/proxy/gemini'
+  if (baseUrl.includes('moonshot.cn'))           return '/api/proxy/moonshot'
+  if (baseUrl.includes('api.anthropic.com'))     return '/api/proxy/anthropic'
+  if (baseUrl.includes('api.openai.com'))        return '/api/proxy/openai'
+  if (baseUrl.includes('googleapis.com'))        return '/api/proxy/gemini'
+  if (baseUrl.includes('api.groq.com'))          return '/api/proxy/groq'
+  if (baseUrl.includes('codestral.mistral.ai'))  return '/api/proxy/codestral'
+  if (baseUrl.includes('api.mistral.ai'))        return '/api/proxy/mistral'
+  if (baseUrl.includes('api.deepseek.com'))      return '/api/proxy/deepseek'
+  if (baseUrl.includes('api.x.ai'))              return '/api/proxy/xai'
+  if (baseUrl.includes('openrouter.ai'))         return '/api/proxy/openrouter'
   return baseUrl
 }
 
 import { THINKING_BUDGET_TOKENS } from '../config/constants.js'
+
+// Per-chunk read timeout — prevents a stalled stream from hanging the agent loop
+// indefinitely.  If no data arrives within this window the stream is aborted.
+const STREAM_CHUNK_TIMEOUT_MS = 30_000
+
+function readChunkWithTimeout(reader) {
+  return Promise.race([
+    reader.read(),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Stream stalled — no data received for 30 s')), STREAM_CHUNK_TIMEOUT_MS)
+    ),
+  ])
+}
 
 // Detect provider name from baseUrl for the proxy request
 function detectProvider(baseUrl) {
@@ -382,7 +451,13 @@ async function readAnthropicToolStream(res, signal, onTextDelta) {
 
   while (true) {
     if (signal?.aborted) { reader.cancel(); break }
-    const { done, value } = await reader.read()
+    let done, value
+    try {
+      ;({ done, value } = await readChunkWithTimeout(reader))
+    } catch (err) {
+      reader.cancel()
+      throw err
+    }
     if (done) break
     buffer += decoder.decode(value, { stream: true })
     const lines = buffer.split('\n')
@@ -455,7 +530,13 @@ async function readOpenAIToolStream(res, signal, onTextDelta) {
 
   while (true) {
     if (signal?.aborted) { reader.cancel(); break }
-    const { done, value } = await reader.read()
+    let done, value
+    try {
+      ;({ done, value } = await readChunkWithTimeout(reader))
+    } catch (err) {
+      reader.cancel()
+      throw err
+    }
     if (done) break
     buffer += decoder.decode(value, { stream: true })
     const lines = buffer.split('\n')
