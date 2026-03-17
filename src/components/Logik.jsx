@@ -154,7 +154,7 @@ function buildFileSystemPrompt(path, existingContent, lang, repoOwner, repoName,
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-export default function Logik({ onClose, models, setModels, selectedModelId, onModelChange }) {
+export default function Logik({ onClose, models, setModels, selectedModelId, onModelChange, onSettingsChanged, onLogout, userEmail }) {
   const saved = loadSettings()
 
   // ── Config ─────────────────────────────────────────────────────────────
@@ -293,7 +293,7 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
 
   // ── Persist settings ───────────────────────────────────────────────────
   useEffect(() => {
-    saveSettings({
+    const s = {
       repoOwner, repoName, baseBranch, githubToken,
       repo2Owner, repo2Name, repo2Branch, repo2Token,
       theme,
@@ -301,9 +301,13 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
       ftSaturation: fineTune.saturation, ftHighlight: fineTune.highlight,
       ftShadow: fineTune.shadow,
       creativity, enableThinking,
-    })
+      webSearchApiKey,
+    }
+    saveSettings(s)
+    // Notify App.jsx so it can debounce-save to Firestore (cloud persistence)
+    onSettingsChanged?.(s)
   }, [repoOwner, repoName, baseBranch, githubToken, repo2Owner, repo2Name, repo2Branch, repo2Token,
-      theme, fineTune, creativity, enableThinking])
+      theme, fineTune, creativity, enableThinking, webSearchApiKey, onSettingsChanged])
 
   // ── Phase 4: start ShadowContext indexing when credentials are ready ────
   useEffect(() => {
@@ -1533,6 +1537,16 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
             <option value="">Model…</option>
             {(models || []).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
           </select>
+
+          {/* Account / logout — shown when Firebase auth is active */}
+          {onLogout && (
+            <button
+              className="lk-icon-btn"
+              title={userEmail ? `Signed in as ${userEmail} — click to log out` : 'Log out'}
+              onClick={onLogout}
+              style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem', opacity: 0.7 }}
+            >⏻</button>
+          )}
 
         </div>
 
