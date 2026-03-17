@@ -843,6 +843,17 @@
 
 .lk-btn--abort:hover { background: rgba(240, 112, 112, 0.18); }
 
+.lk-btn--abort-inline {
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
 /* ── Push status ────────────────────────────────────────────────── */
 .lk-push-status {
   display: flex;
