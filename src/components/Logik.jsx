@@ -154,7 +154,7 @@ function buildFileSystemPrompt(path, existingContent, lang, repoOwner, repoName,
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-export default function Logik({ onClose, models, setModels, selectedModelId, onModelChange }) {
+export default function Logik({ onClose, models, setModels, selectedModelId, onModelChange, onSettingsChanged, onLogout, userEmail }) {
   const saved = loadSettings()
 
   // ── Config ─────────────────────────────────────────────────────────────
@@ -291,19 +291,34 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
     if (selectedModelId && !activeModelId) setActiveModelId(selectedModelId)
   }, [selectedModelId, activeModelId])
 
+  // ── Stable ref for the cloud-sync callback ────────────────────────────
+  // Using a ref means the effect below doesn't re-run just because App.jsx
+  // re-created the callback (e.g. after a model-key update).
+  const onSettingsChangedRef = useRef(onSettingsChanged)
+  useEffect(() => { onSettingsChangedRef.current = onSettingsChanged }, [onSettingsChanged])
+
   // ── Persist settings ───────────────────────────────────────────────────
+  // fineTune is decomposed into primitives so React can compare by value,
+  // not by object reference (which would fire this effect on every render).
+  const { brightness, contrast, saturation, highlight, shadow } = fineTune
   useEffect(() => {
-    saveSettings({
+    const s = {
       repoOwner, repoName, baseBranch, githubToken,
       repo2Owner, repo2Name, repo2Branch, repo2Token,
       theme,
-      ftBrightness: fineTune.brightness, ftContrast: fineTune.contrast,
-      ftSaturation: fineTune.saturation, ftHighlight: fineTune.highlight,
-      ftShadow: fineTune.shadow,
+      ftBrightness: brightness, ftContrast: contrast,
+      ftSaturation: saturation, ftHighlight: highlight,
+      ftShadow: shadow,
       creativity, enableThinking,
-    })
+      webSearchApiKey,
+      permissionMode,
+    }
+    saveSettings(s)
+    // Notify App.jsx so it can debounce-save to Firestore (cloud persistence)
+    onSettingsChangedRef.current?.(s)
   }, [repoOwner, repoName, baseBranch, githubToken, repo2Owner, repo2Name, repo2Branch, repo2Token,
-      theme, fineTune, creativity, enableThinking])
+      theme, brightness, contrast, saturation, highlight, shadow,
+      creativity, enableThinking, webSearchApiKey, permissionMode])
 
   // ── Phase 4: start ShadowContext indexing when credentials are ready ────
   useEffect(() => {
@@ -1533,6 +1548,16 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
             <option value="">Model…</option>
             {(models || []).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
           </select>
+
+          {/* Account / logout — shown when Firebase auth is active */}
+          {onLogout && (
+            <button
+              className="lk-icon-btn"
+              title={userEmail ? `Signed in as ${userEmail} — click to log out` : 'Log out'}
+              onClick={onLogout}
+              style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem', opacity: 0.7 }}
+            >⏻</button>
+          )}
 
         </div>
 

@@ -1,6 +1,10 @@
 // ─── firebaseService ──────────────────────────────────────────────────────────
-// Firebase initialisation and cloud storage features for LOGIK.
+// Firebase initialisation, authentication, and cloud settings persistence.
 // Project: logik-89579
+//
+// Settings are saved to Firestore at users/{uid}/settings.
+// Sensitive fields (API keys, tokens) are XOR-encrypted with the user's UID
+// before storage, providing defense-in-depth beyond Firestore security rules.
 
 import { initializeApp, getApps } from 'firebase/app'
 
@@ -82,6 +86,64 @@ export async function getAuth() {
   return _auth
 }
 
+// Returns the currently signed-in Firebase user synchronously (null if not authed).
+export function getCurrentUser() {
+  return _auth?.currentUser ?? null
+}
+
+// Sign in with email + password.  Throws a Firebase AuthError on failure.
+export async function signInWithEmail(email, password) {
+  const auth = await getAuth()
+  const { signInWithEmailAndPassword } = await import('firebase/auth')
+  const cred = await signInWithEmailAndPassword(auth, email, password)
+  return cred.user
+}
+
+// Create a new account with email + password.  Throws on failure.
+export async function signUpWithEmail(email, password) {
+  const auth = await getAuth()
+  const { createUserWithEmailAndPassword } = await import('firebase/auth')
+  const cred = await createUserWithEmailAndPassword(auth, email, password)
+  return cred.user
+}
+
+// Sign out the current user.
+export async function signOutUser() {
+  const auth = await getAuth()
+  const { signOut } = await import('firebase/auth')
+  await signOut(auth)
+}
+
+// Subscribe to auth state changes.  Returns an unsubscribe function.
+// callback(user | null) is called immediately with the current state
+// and again whenever the state changes.
+//
+// Uses a flag+ref pattern so the cleanup function always works even
+// though the subscription is set up asynchronously.
+export function onAuthStateChange(callback) {
+  let realUnsub = null
+  let cancelled = false
+
+  ;(async () => {
+    try {
+      const auth = await getAuth()
+      if (cancelled) return
+      const { onAuthStateChanged } = await import('firebase/auth')
+      if (cancelled) return
+      realUnsub = onAuthStateChanged(auth, callback)
+    } catch (err) {
+      console.warn('[Logik] onAuthStateChange setup failed:', err.message)
+      // Fire callback with null so the app doesn't stay on the loading screen
+      if (!cancelled) callback(null)
+    }
+  })()
+
+  return () => {
+    cancelled = true
+    realUnsub?.()
+  }
+}
+
 // ── Storage ───────────────────────────────────────────────────────────────────
 
 export async function getStorage() {
@@ -103,6 +165,95 @@ export function getFirebaseStatus() {
   }
 }
 
+// ── Encryption helpers (XOR-cipher keyed on user UID) ─────────────────────────
+// Obfuscates sensitive values before writing to Firestore.
+// The real access control is Firestore security rules; this adds a second layer.
+
+function xorCipher(text, key) {
+  if (!text || !key) return text
+  return btoa(
+    text.split('').map((c, i) =>
+      String.fromCharCode(c.charCodeAt(0) ^ key.charCodeAt(i % key.length))
+    ).join('')
+  )
+}
+
+function xorDecipher(encoded, key) {
+  if (!encoded || !key) return encoded
+  try {
+    const raw = atob(encoded)
+    return raw.split('').map((c, i) =>
+      String.fromCharCode(c.charCodeAt(0) ^ key.charCodeAt(i % key.length))
+    ).join('')
+  } catch { return '' }
+}
+
+// Fields that contain sensitive credentials — encrypted before Firestore write.
+const SENSITIVE_FIELDS = ['githubToken', 'repo2Token', 'webSearchApiKey']
+
+// ── Cloud settings persistence ────────────────────────────────────────────────
+// Saved to: users/{uid}/settings  (one document per user)
+//
+// Firestore security rules should allow only the authenticated user to
+// read/write their own settings:
+//
+//   rules_version = '2';
+//   service cloud.firestore {
+//     match /databases/{database}/documents {
+//       match /users/{userId}/settings {
+//         allow read, write: if request.auth != null && request.auth.uid == userId;
+//       }
+//     }
+//   }
+
+export async function saveUserSettings(uid, settings) {
+  if (!uid || !settings) return
+  try {
+    const db = await getFirestore()
+    const { doc, setDoc } = await import('firebase/firestore')
+
+    // Encrypt sensitive fields; keep everything else plaintext
+    const payload = { ...settings, _v: 1, _ts: Date.now() }
+    SENSITIVE_FIELDS.forEach(f => {
+      if (payload[f]) payload[f] = xorCipher(payload[f], uid)
+    })
+    // Encrypt API keys inside the models array
+    if (Array.isArray(payload.models)) {
+      payload.models = payload.models.map(m => ({
+        ...m,
+        apiKey: m.apiKey ? xorCipher(m.apiKey, uid) : '',
+      }))
+    }
+
+    await setDoc(doc(db, 'users', uid, 'data', 'settings'), payload)
+  } catch (err) {
+    console.warn('[Logik] saveUserSettings failed:', err.message)
+  }
+}
+
+// Returns the decrypted settings object, null if the document doesn't exist yet,
+// or throws on a real error (permissions, network) so the caller can decide.
+export async function loadUserSettings(uid) {
+  if (!uid) return null
+  const db = await getFirestore()
+  const { doc, getDoc } = await import('firebase/firestore')
+  const snap = await getDoc(doc(db, 'users', uid, 'data', 'settings'))
+  if (!snap.exists()) return null    // New user — no settings saved yet (not an error)
+
+  const data = snap.data()
+  // Decrypt sensitive fields
+  SENSITIVE_FIELDS.forEach(f => {
+    if (data[f]) data[f] = xorDecipher(data[f], uid)
+  })
+  // Decrypt model API keys
+  if (Array.isArray(data.models)) {
+    data.models = data.models.map(m => ({
+      ...m,
+      apiKey: m.apiKey ? xorDecipher(m.apiKey, uid) : '',
+    }))
+  }
+  return data
+}
+
 // ── Auto-init on module load ──────────────────────────────────────────────────
 initFirebaseSync(loadFirebaseConfig())
-

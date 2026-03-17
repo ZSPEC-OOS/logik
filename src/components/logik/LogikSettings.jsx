@@ -143,7 +143,7 @@ const LogikSettings = memo(function LogikSettings({
         </div>
         <div className="lk-settings-section-body">
           <span className="lk-security-note">
-            Keys are encrypted in sessionStorage — cleared automatically when this tab closes.
+            Keys are encrypted and saved to your account — restored automatically when you sign in on any device.
           </span>
 
           {(models || []).map(m => (
@@ -225,7 +225,7 @@ const LogikSettings = memo(function LogikSettings({
           <span className="lk-hint">
             Enables the <code>web_search</code> agent tool. Get a free key at{' '}
             <a href="https://app.tavily.com" target="_blank" rel="noreferrer">app.tavily.com</a>
-            {' '}(1,000 free searches/month). Stored in sessionStorage — clears on tab close.
+            {' '}(1,000 free searches/month). Saved to your account and restored on next sign-in.
           </span>
           <input
             className="lk-input"
@@ -509,8 +509,8 @@ const LogikSettings = memo(function LogikSettings({
         <div className="lk-security-label">Security</div>
         <div className="lk-security-body">
           <span className="lk-security-note">
-            API keys and GitHub token are stored in sessionStorage only — cleared automatically when this tab closes.
-            Keys are XOR-encrypted with a cryptographically-random per-session key (never stored in source code).
+            API keys and tokens are encrypted with your account ID and saved to your Firestore account —
+            restored automatically when you sign in. Local session copies are cleared when the tab closes.
           </span>
           <div className="lk-permission-mode">
             <span className="lk-security-note">Push permission mode:</span>
