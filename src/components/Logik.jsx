@@ -210,7 +210,7 @@ export default function Logik({ onClose, models, selectedModelId, onModelChange 
   // ── Output ─────────────────────────────────────────────────────────────
   const [activeTab,  setActiveTab]  = useState('code')
   // viewMode — top-level toggle between the chat/plan view and the code view
-  const [viewMode,   setViewMode]   = useState('chat')  // 'chat' | 'code'
+  const [viewMode,   setViewMode]   = useState('chat')  // 'chat' | 'code' | 'fusion'
   const [gitStatus,  setGitStatus]  = useState(null)
   const [prResult,   setPrResult]   = useState(null)
   const [workflows,  setWorkflows]  = useState([])
@@ -1538,9 +1538,9 @@ export default function Logik({ onClose, models, selectedModelId, onModelChange 
                   title="Code — see the generated files"
                 >Code</button>
                 <button
-                  className={`lk-view-toggle-btn lk-view-toggle-btn--fusion${hasBothRepos ? ' lk-view-toggle-btn--fusion-active' : ''}`}
-                  onClick={() => hasBothRepos ? setBuildMode(true) : setSourceOpen(v => !v)}
-                  title={hasBothRepos ? `Fusion — absorb ${repo2Owner}/${repo2Name} into target repo` : 'Fusion — attach a source repo to enable multi-repo fusion mode'}
+                  className={`lk-view-toggle-btn lk-view-toggle-btn--fusion${viewMode === 'fusion' ? ' lk-view-toggle-btn--fusion-active' : ''}`}
+                  onClick={() => setViewMode('fusion')}
+                  title="Fusion — attach a repo and absorb its best material"
                 >⟳ Fusion</button>
               </div>
 
@@ -1562,59 +1562,6 @@ export default function Logik({ onClose, models, selectedModelId, onModelChange 
             <option value="">Model…</option>
             {(models || []).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
           </select>}
-          {/* ── Fusion popover — anchored to the Fusion tab button ── */}
-          {!buildMode && sourceOpen && (
-            <div className="lk-source-chip-wrap lk-source-chip-wrap--fusion-tab">
-              <div className="lk-source-popover">
-                <div className="lk-source-popover-hd">
-                  {hasBothRepos ? 'Fusion — Source Repository' : 'Fusion — Attach Source Repository'}
-                </div>
-                <label className="lk-label">Quick Setup</label>
-                <input
-                  className="lk-input"
-                  placeholder="github.com/owner/repo"
-                  onChange={e => {
-                    const p = (() => {
-                      try {
-                        const u = e.target.value.trim().replace(/^https?:\/\//, '')
-                        const parts = u.replace('github.com/', '').split('/')
-                        if (parts.length >= 2) return { owner: parts[0], repo: parts[1].replace(/\.git$/, '') }
-                      } catch {}
-                      return null
-                    })()
-                    if (p) { setRepo2Owner(p.owner); setRepo2Name(p.repo) }
-                  }}
-                />
-                <div className="lk-source-popover-row">
-                  <input className="lk-input" placeholder="owner" value={repo2Owner}
-                    onChange={e => setRepo2Owner(e.target.value.trim())} />
-                  <span className="lk-source-popover-sep">/</span>
-                  <input className="lk-input" placeholder="repo" value={repo2Name}
-                    onChange={e => setRepo2Name(e.target.value.trim())} />
-                </div>
-                <input className="lk-input" placeholder="branch (default: main)" value={repo2Branch}
-                  onChange={e => setRepo2Branch(e.target.value.trim())} />
-                <input className="lk-input" type="password" placeholder="Token (optional — reuses primary)"
-                  value={repo2Token} onChange={e => setRepo2Token(e.target.value)} autoComplete="off" />
-                <div className="lk-source-popover-actions">
-                  {hasBothRepos && (
-                    <button className="lk-btn lk-btn--small" onClick={() => {
-                      setRepo2Owner(''); setRepo2Name(''); setRepo2Branch('main'); setRepo2Token('')
-                      setSourceOpen(false)
-                    }}>Disconnect</button>
-                  )}
-                  <button className="lk-btn lk-btn--primary lk-btn--small"
-                    disabled={!repo2Owner || !repo2Name}
-                    onClick={() => { setSourceOpen(false); if (hasBothRepos) setBuildMode(true) }}>
-                    {hasBothRepos ? 'Absorb →' : 'Attach'}
-                  </button>
-                </div>
-                {hasBothRepos && shadowStatus2 && (
-                  <div className="lk-source-popover-status">{shadowStatus2}</div>
-                )}
-              </div>
-            </div>
-          )}
 
         </div>
 
@@ -1728,7 +1675,25 @@ export default function Logik({ onClose, models, selectedModelId, onModelChange 
         {/* ══════════════════════════════════════════════════════════════════
             MAIN FEED — full-height scrollable output area
             ══════════════════════════════════════════════════════════════════ */}
-        {!buildMode && <div className="lk-feed">
+        {/* ── Fusion page ───────────────────────────────────────────────── */}
+        {!buildMode && viewMode === 'fusion' && (
+          <div className="lk-fusion-view">
+            <LogikFusionPanel
+              sourceRepo={{ owner: repo2Owner, repo: repo2Name, branch: repo2Branch }}
+              targetRepo={{ owner: repoOwner,  repo: repoName,  branch: baseBranch  }}
+              onRunRitual={prompt => { agentSession.run(prompt); setViewMode('chat'); setActiveTab('activity') }}
+              isRunning={agentSession.isAgentRunning}
+              shadowStatus2={shadowStatus2}
+              repo2Owner={repo2Owner}   setRepo2Owner={setRepo2Owner}
+              repo2Name={repo2Name}     setRepo2Name={setRepo2Name}
+              repo2Branch={repo2Branch} setRepo2Branch={setRepo2Branch}
+              repo2Token={repo2Token}   setRepo2Token={setRepo2Token}
+              hasBothRepos={hasBothRepos}
+            />
+          </div>
+        )}
+
+        {!buildMode && viewMode !== 'fusion' && <div className="lk-feed">
 
           {/* ── Feed status strip: plan, amplifier, remediation ──────────── */}
           {(isAmplifying || amplifierDecisions.length > 0 || remediationStatus || isPlanning || filePlan.length > 0) && (
@@ -1999,9 +1964,9 @@ export default function Logik({ onClose, models, selectedModelId, onModelChange 
           )}
 
           </div>{/* end lk-feed-output */}
-        </div>}{/* end lk-feed */}
+        </div>}{/* end lk-feed (viewMode !== 'fusion') */}
 
-        {!buildMode && <>{/* ══════════════════════════════════════════════════
+        {!buildMode && viewMode !== 'fusion' && <>{/* ══════════════════════════════════════════════════
             BOTTOM INPUT BAR — prompt + controls (Claude Code style)
             ══════════════════════════════════════════════════════════════════ */}
         <div className="lk-input-bar">

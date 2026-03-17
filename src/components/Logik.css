@@ -3089,6 +3089,172 @@ kbd {
   padding-top: 2px;
 }
 
+/* ── Fusion full-page view ───────────────────────────────────────────────── */
+.lk-fusion-view {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.lk-fusion-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 24px 20px;
+  max-width: 680px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* ── Attach section ── */
+.lk-fusion-attach {
+  background: var(--lk-surface);
+  border: 1px solid var(--lk-border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.lk-fusion-attach-hd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--lk-border);
+  background: color-mix(in srgb, #38bdf8 6%, var(--lk-surface));
+}
+
+.lk-fusion-attach-icon {
+  font-size: 16px;
+  color: #38bdf8;
+}
+
+.lk-fusion-attach-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--lk-fg);
+}
+
+.lk-fusion-attach-connected {
+  margin-left: auto;
+  font-size: 11px;
+  color: #7dd3fc;
+  font-weight: 500;
+}
+
+.lk-fusion-attach-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+}
+
+.lk-fusion-attach-paste {
+  font-size: 12px;
+}
+
+.lk-fusion-attach-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lk-fusion-attach-row .lk-input {
+  flex: 1;
+}
+
+.lk-fusion-attach-branch {
+  flex: 0 0 90px !important;
+}
+
+.lk-fusion-attach-sep {
+  color: var(--lk-muted);
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.lk-fusion-attach-status {
+  font-size: 11px;
+  color: var(--lk-muted);
+  padding: 2px 0;
+}
+
+.lk-fusion-attach-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* ── Absorb button ── */
+.lk-fusion-absorb-btn {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 16px 20px;
+  background: color-mix(in srgb, #38bdf8 12%, var(--lk-surface));
+  border: 1px solid color-mix(in srgb, #38bdf8 35%, transparent);
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s, border-color 0.15s;
+  font-family: inherit;
+}
+
+.lk-fusion-absorb-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, #38bdf8 20%, var(--lk-surface));
+  border-color: color-mix(in srgb, #38bdf8 60%, transparent);
+}
+
+.lk-fusion-absorb-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.lk-fusion-absorb-icon {
+  font-size: 28px;
+  color: #38bdf8;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.lk-fusion-absorb-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.lk-fusion-absorb-label {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--lk-fg);
+  letter-spacing: 0.03em;
+}
+
+.lk-fusion-absorb-desc {
+  font-size: 11px;
+  color: var(--lk-muted);
+  line-height: 1.5;
+}
+
+/* ── Ritual section header ── */
+.lk-fusion-rituals-hd {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--lk-muted);
+  padding: 0 2px;
+}
+
+/* ── Mobile ── */
+@media (max-width: 430px) {
+  .lk-fusion-page { padding: 14px 12px; gap: 14px; }
+  .lk-fusion-attach-row { flex-wrap: wrap; }
+  .lk-fusion-attach-branch { flex: 1 !important; }
+}
+
 /* ── Fusion Panel ────────────────────────────────────────────────────────── */
 .lk-fusion-panel {
   display: flex;
