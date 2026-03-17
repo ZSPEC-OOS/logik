@@ -1,20 +1,24 @@
 // ─── firebaseService ──────────────────────────────────────────────────────────
-// Manages Firebase initialisation and cloud storage features.
-// Config is stored in localStorage under 'logik:firebase' — paste your
-// Firebase project config from the Firebase Console into the Settings panel.
-//
-// Setup:
-//   1. Go to Firebase Console → Project Settings → Your apps → Web app
-//   2. Copy the firebaseConfig object
-//   3. Open LOGIK Settings → Firebase section → paste and Save
-//   4. Optionally set VITE_AI_PROXY_URL to your Cloud Function URL for
-//      server-side API key management
+// Firebase initialisation and cloud storage features for LOGIK.
+// Project: logik-89579
+
+import { initializeApp, getApps } from 'firebase/app'
 
 const FB_CONFIG_KEY = 'logik:firebase'
 
-let _app  = null
-let _db   = null
-let _auth = null
+// ── Hardcoded project config ──────────────────────────────────────────────────
+const DEFAULT_FIREBASE_CONFIG = {
+  apiKey:            'AIzaSyDvrUk8NGHI3H7LV02Y0bIyoku-WXEzhDE',
+  authDomain:        'logik-89579.firebaseapp.com',
+  projectId:         'logik-89579',
+  storageBucket:     'logik-89579.firebasestorage.app',
+  messagingSenderId: '940295059330',
+  appId:             '1:940295059330:web:30d7b075de7ca9450c419b',
+}
+
+let _app     = null
+let _db      = null
+let _auth    = null
 let _storage = null
 
 // ── Config persistence ────────────────────────────────────────────────────────
@@ -22,16 +26,14 @@ let _storage = null
 export function loadFirebaseConfig() {
   try {
     const raw = localStorage.getItem(FB_CONFIG_KEY)
-    return raw ? JSON.parse(raw) : null
+    return raw ? JSON.parse(raw) : DEFAULT_FIREBASE_CONFIG
   } catch {
-    return null
+    return DEFAULT_FIREBASE_CONFIG
   }
 }
 
 export function saveFirebaseConfig(config) {
-  try {
-    localStorage.setItem(FB_CONFIG_KEY, JSON.stringify(config))
-  } catch {}
+  try { localStorage.setItem(FB_CONFIG_KEY, JSON.stringify(config)) } catch {}
 }
 
 export function clearFirebaseConfig() {
@@ -43,20 +45,17 @@ export function clearFirebaseConfig() {
 
 // ── Initialisation ────────────────────────────────────────────────────────────
 
-export async function initFirebase(config) {
-  if (!config?.apiKey || !config?.projectId) {
-    throw new Error('Invalid Firebase config — apiKey and projectId are required')
-  }
-
-  const { initializeApp, getApps } = await import('firebase/app')
-
-  // Avoid re-initialising with the same config
+export function initFirebaseSync(config = DEFAULT_FIREBASE_CONFIG) {
+  if (!config?.apiKey || !config?.projectId) return null
   const existing = getApps().find(a => a.options.projectId === config.projectId)
   if (existing) { _app = existing; return _app }
-
   _app = initializeApp(config)
   saveFirebaseConfig(config)
   return _app
+}
+
+export async function initFirebase(config = DEFAULT_FIREBASE_CONFIG) {
+  return initFirebaseSync(config)
 }
 
 export function getFirebaseApp() { return _app }
@@ -64,7 +63,7 @@ export function getFirebaseApp() { return _app }
 // ── Firestore ─────────────────────────────────────────────────────────────────
 
 export async function getFirestore() {
-  if (!_app) throw new Error('Firebase not initialised — paste your config in Settings first')
+  if (!_app) initFirebaseSync()
   if (!_db) {
     const { getFirestore: _getFS } = await import('firebase/firestore')
     _db = _getFS(_app)
@@ -75,7 +74,7 @@ export async function getFirestore() {
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
 export async function getAuth() {
-  if (!_app) throw new Error('Firebase not initialised — paste your config in Settings first')
+  if (!_app) initFirebaseSync()
   if (!_auth) {
     const { getAuth: _getAuth } = await import('firebase/auth')
     _auth = _getAuth(_app)
@@ -86,7 +85,7 @@ export async function getAuth() {
 // ── Storage ───────────────────────────────────────────────────────────────────
 
 export async function getStorage() {
-  if (!_app) throw new Error('Firebase not initialised — paste your config in Settings first')
+  if (!_app) initFirebaseSync()
   if (!_storage) {
     const { getStorage: _getStorage } = await import('firebase/storage')
     _storage = _getStorage(_app)
@@ -97,16 +96,13 @@ export async function getStorage() {
 // ── Status ────────────────────────────────────────────────────────────────────
 
 export function getFirebaseStatus() {
-  const config = loadFirebaseConfig()
   return {
-    configured: !!config?.apiKey,
+    configured:  true,
     initialised: !!_app,
-    projectId: config?.projectId || null,
+    projectId:   DEFAULT_FIREBASE_CONFIG.projectId,
   }
 }
 
-// Auto-init on load if config exists in localStorage
-const _savedConfig = loadFirebaseConfig()
-if (_savedConfig?.apiKey) {
-  initFirebase(_savedConfig).catch(() => {})
-}
+// ── Auto-init on module load ──────────────────────────────────────────────────
+initFirebaseSync(loadFirebaseConfig())
+
