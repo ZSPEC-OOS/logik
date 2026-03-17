@@ -393,6 +393,34 @@
   color: #fff;
 }
 
+.lk-view-toggle-btn--fusion {
+  color: var(--lk-text-muted);
+}
+
+.lk-view-toggle-btn--fusion:hover {
+  color: #7dd3fc;
+  background: color-mix(in srgb, #38bdf8 12%, transparent);
+}
+
+.lk-view-toggle-btn--fusion-active {
+  background: color-mix(in srgb, #38bdf8 20%, transparent);
+  color: #7dd3fc;
+  font-weight: 600;
+}
+
+.lk-view-toggle-btn--fusion-active:hover {
+  background: color-mix(in srgb, #38bdf8 30%, transparent);
+  color: #bae6fd;
+}
+
+.lk-source-chip-wrap--fusion-tab {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
+}
+
 /* ════════════════════════════════════════════════════════════════════
    FEED + INPUT BAR  — Claude Code-style main content area
    ════════════════════════════════════════════════════════════════════ */
