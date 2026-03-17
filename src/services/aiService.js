@@ -465,10 +465,14 @@ async function readOpenAIToolStream(res, signal, onTextDelta) {
     }
   }
 
-  const toolCalls = Object.values(tcMap).map(tc => {
+  const toolCalls = Object.values(tcMap).map((tc, i) => {
     let input = {}
     try { input = JSON.parse(tc.argParts.join('')) } catch {}
-    return { id: tc.id, name: tc.name, input }
+    // Guarantee a non-empty ID — Kimi sometimes omits it after the first delta chunk.
+    // The ID in _raw.tool_calls MUST match tool_call_id in tool results, so we
+    // derive a stable fallback and apply it to both sides.
+    const id = tc.id || `call_${i}_${tc.name || 'tool'}`
+    return { id, name: tc.name, input }
   })
 
   const _raw = {
@@ -481,7 +485,9 @@ async function readOpenAIToolStream(res, signal, onTextDelta) {
   // Preserve reasoning_content for providers that require it in multi-turn history (e.g. Kimi K2.5 thinking mode)
   if (reasoningContent) _raw.reasoning_content = reasoningContent
 
-  return { text: fullText, toolCalls, isDone: finishReason === 'stop' || toolCalls.length === 0, _raw }
+  // isDone when no tool calls to execute — finish_reason can be 'stop', 'tool_calls',
+  // or null (stream cut off). We drive the loop by tool call presence, not reason string.
+  return { text: fullText, toolCalls, isDone: toolCalls.length === 0, _raw }
 }
 
 // ── callWithToolsStreaming — streaming tool-use call ──────────────────────────
