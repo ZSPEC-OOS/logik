@@ -2806,6 +2806,167 @@ kbd {
   white-space: nowrap;
 }
 
+/* ── Build Mode ─────────────────────────────────────────────────────────── */
+.lk-topbar--build {
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--lk-accent) 12%, var(--lk-bg)) 0%,
+    var(--lk-bg) 100%);
+  border-bottom-color: color-mix(in srgb, var(--lk-accent) 30%, transparent);
+}
+
+.lk-build-pulse {
+  animation: lk-build-glow 2s ease-in-out infinite;
+}
+@keyframes lk-build-glow {
+  0%, 100% { opacity: 1; text-shadow: 0 0 8px var(--lk-accent); }
+  50%       { opacity: 0.6; text-shadow: none; }
+}
+
+.lk-build-badge {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--lk-accent);
+  background: color-mix(in srgb, var(--lk-accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--lk-accent) 35%, transparent);
+  border-radius: 4px;
+  padding: 2px 8px;
+  flex-shrink: 0;
+}
+
+.lk-build-repos {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  overflow: hidden;
+}
+.lk-build-src  { color: var(--lk-accent); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
+.lk-build-arrow{ color: var(--lk-muted); flex-shrink: 0; }
+.lk-build-tgt  { color: var(--lk-fg); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
+
+.lk-build-index-status {
+  font-size: 10px;
+  color: var(--lk-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.lk-build-index-status--pulse { color: var(--lk-accent); animation: lk-build-glow 1.4s ease-in-out infinite; }
+
+.lk-build-exit {
+  background: transparent;
+  border: 1px solid var(--lk-border);
+  border-radius: 6px;
+  color: var(--lk-muted);
+  font-size: 11px;
+  font-family: inherit;
+  padding: 4px 10px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.15s, border-color 0.15s;
+}
+.lk-build-exit:hover { color: var(--lk-fg); border-color: var(--lk-fg); }
+
+/* Full-screen build area */
+.lk-build-area {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.lk-fusion-panel--build {
+  flex: 1;
+  padding: 24px 32px 0;
+  gap: 24px;
+}
+
+.lk-fusion-build-heading {
+  font-size: 13px;
+  color: var(--lk-muted);
+  margin: 0;
+  line-height: 1.6;
+}
+.lk-fusion-build-heading strong { color: var(--lk-fg); }
+
+/* Bigger ritual buttons in build mode */
+.lk-fusion-grid--build {
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.lk-fusion-btn--build {
+  padding: 18px 20px;
+  border-radius: 10px;
+  gap: 14px;
+}
+.lk-fusion-btn--build .lk-fusion-btn-icon {
+  font-size: 26px;
+  margin-top: 0;
+}
+.lk-fusion-btn--build .lk-fusion-btn-label {
+  font-size: 15px;
+}
+.lk-fusion-btn--build .lk-fusion-btn-desc {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* Build mode input bar */
+.lk-build-input-bar {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 16px;
+  background: var(--lk-surface);
+  border-top: 1px solid var(--lk-border);
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.25);
+}
+
+.lk-build-stream {
+  font-size: 11px;
+  color: var(--lk-accent);
+  padding: 4px 6px;
+  background: color-mix(in srgb, var(--lk-accent) 5%, transparent);
+  border-radius: 4px;
+  white-space: pre-wrap;
+  max-height: 60px;
+  overflow-y: auto;
+}
+
+.lk-build-done {
+  font-size: 11px;
+  color: var(--lk-success);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+}
+.lk-build-done-icon { font-size: 14px; }
+.lk-build-done-files { color: var(--lk-muted); }
+
+.lk-build-prompt-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.lk-build-textarea {
+  flex: 1;
+  min-height: 40px;
+  max-height: 120px;
+  resize: none;
+}
+
+.lk-build-send {
+  flex-shrink: 0;
+  align-self: flex-end;
+  height: 38px;
+}
+
 /* ── Source Repo Chip (topbar) ───────────────────────────────────────────── */
 .lk-source-chip-wrap {
   position: relative;

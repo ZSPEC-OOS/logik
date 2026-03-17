@@ -263,6 +263,7 @@ export default function Logik({ onClose, models, selectedModelId, onModelChange 
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [historyOpen,  setHistoryOpen]  = useState(false)
   const [sourceOpen,   setSourceOpen]   = useState(false)
+  const [buildMode,    setBuildMode]    = useState(false)
   const [history,      setHistory]      = useState(loadHistory)
   // ── Phase 4: ShadowContext ─────────────────────────────────────────────
   const [shadowStatus,  setShadowStatus]  = useState(null)   // null | string
@@ -318,6 +319,12 @@ export default function Logik({ onClose, models, selectedModelId, onModelChange 
       setShadowStatus2(shadowContext2.statusSummary())
     })
   }, [repo2Owner, repo2Name, repo2Branch, repo2Token, githubToken])
+
+  // ── Auto-enter / exit Build Mode when source repo connects ────────────
+  useEffect(() => {
+    if (hasBothRepos) setBuildMode(true)
+    else              setBuildMode(false)
+  }, [hasBothRepos])
 
   // ── State watchdog — detects and resets stuck busy flags ───────────────
   // If isGenerating has been true for >5 minutes (e.g. due to unhandled reject),
@@ -1485,47 +1492,74 @@ export default function Logik({ onClose, models, selectedModelId, onModelChange 
       <div className="lk-main">
 
         {/* ── Thin top bar ──────────────────────────────────────────────────── */}
-        <div className="lk-topbar">
-          <span className="lk-brand-icon">◈</span>
-          <span className="lk-brand-name">LOGIK</span>
-          <span className="lk-brand-sub">AI Coding Assistant</span>
+        <div className={`lk-topbar${buildMode ? ' lk-topbar--build' : ''}`}>
 
-          {/* ── Plan / Code view toggle ── */}
-          <div className="lk-view-toggle" role="group" aria-label="View mode">
-            <button
-              className={`lk-view-toggle-btn${viewMode === 'chat' ? ' lk-view-toggle-btn--active' : ''}`}
-              onClick={() => setViewMode('chat')}
-              title="Plan & Chat — see what LOGIK is doing"
-            >
-              💬 Plan
-            </button>
-            <button
-              className={`lk-view-toggle-btn${viewMode === 'code' ? ' lk-view-toggle-btn--active' : ''}`}
-              onClick={() => { setViewMode('code'); if (activeTab === 'activity') setActiveTab('code') }}
-              title="Code — see the generated files"
-            >
-              {'</>'}  Code
-            </button>
-          </div>
+          {buildMode ? (
+            /* ── BUILD MODE topbar ── */
+            <>
+              <span className="lk-brand-icon lk-build-pulse">◈</span>
+              <span className="lk-build-badge">BUILD MODE</span>
+              <div className="lk-build-repos">
+                <span className="lk-build-src">{repo2Owner}/{repo2Name}</span>
+                <span className="lk-build-arrow">⟶</span>
+                <span className="lk-build-tgt">{repoOwner}/{repoName}</span>
+              </div>
+              {shadowStatus2 && (
+                <span className={`lk-build-index-status${shadowContext2.isIndexing ? ' lk-build-index-status--pulse' : ''}`}>
+                  {shadowStatus2}
+                </span>
+              )}
+              <div className="lk-topbar-spacer" />
+              <select className="lk-model-select" value={activeModelId}
+                onChange={e => { setActiveModelId(e.target.value); onModelChange?.(e.target.value) }}>
+                <option value="">Model…</option>
+                {(models || []).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+              <button className="lk-btn lk-btn--small" onClick={() => setSettingsOpen(v => !v)} title="Settings">⚙</button>
+              <button className="lk-build-exit" onClick={() => setBuildMode(false)} title="Exit Build Mode">
+                ← Exit
+              </button>
+            </>
+          ) : (
+            /* ── Normal topbar ── */
+            <>
+              <span className="lk-brand-icon">◈</span>
+              <span className="lk-brand-name">LOGIK</span>
+              <span className="lk-brand-sub">AI Coding Assistant</span>
 
-          {turnCount > 0 && (
-            <div className="lk-turn-badge">
-              {turnCount} {turnCount === 1 ? 'turn' : 'turns'}
-              {filePath && <span className="lk-turn-file"> · {filePath.split('/').pop()}</span>}
-            </div>
+              <div className="lk-view-toggle" role="group" aria-label="View mode">
+                <button
+                  className={`lk-view-toggle-btn${viewMode === 'chat' ? ' lk-view-toggle-btn--active' : ''}`}
+                  onClick={() => setViewMode('chat')}
+                  title="Plan & Chat — see what LOGIK is doing"
+                >💬 Plan</button>
+                <button
+                  className={`lk-view-toggle-btn${viewMode === 'code' ? ' lk-view-toggle-btn--active' : ''}`}
+                  onClick={() => { setViewMode('code'); if (activeTab === 'activity') setActiveTab('code') }}
+                  title="Code — see the generated files"
+                >{'</>'} Code</button>
+              </div>
+
+              {turnCount > 0 && (
+                <div className="lk-turn-badge">
+                  {turnCount} {turnCount === 1 ? 'turn' : 'turns'}
+                  {filePath && <span className="lk-turn-file"> · {filePath.split('/').pop()}</span>}
+                </div>
+              )}
+              <div className="lk-topbar-spacer" />
+              {shadowStatus && (
+                <div className={`lk-shadow-badge${shadowContext.isIndexing ? ' lk-shadow-badge--indexing' : ''}`}
+                  title="ShadowContext: background repo index">◈ {shadowStatus}</div>
+              )}
+            </>
           )}
-          <div className="lk-topbar-spacer" />
-          {shadowStatus && (
-            <div className={`lk-shadow-badge${shadowContext.isIndexing ? ' lk-shadow-badge--indexing' : ''}`}
-              title="ShadowContext: background repo index">◈ {shadowStatus}</div>
-          )}
-          <select className="lk-model-select" value={activeModelId}
+          {!buildMode && <select className="lk-model-select" value={activeModelId}
             onChange={e => { setActiveModelId(e.target.value); onModelChange?.(e.target.value) }} disabled={busy}>
             <option value="">Model…</option>
             {(models || []).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-          </select>
-          {/* ── Source repo chip ── */}
-          {hasGithub && (
+          </select>}
+          {/* ── Source repo chip — hidden in build mode (topbar already shows repos) ── */}
+          {hasGithub && !buildMode && (
             <div className="lk-source-chip-wrap">
               <button
                 className={`lk-source-chip${hasBothRepos ? ' lk-source-chip--connected' : ''}${sourceOpen ? ' lk-source-chip--open' : ''}`}
@@ -1589,14 +1623,12 @@ export default function Logik({ onClose, models, selectedModelId, onModelChange 
             </div>
           )}
 
-          <button
+          {!buildMode && <button
             className="lk-btn lk-btn--small"
             onClick={() => downloadLogikZip()}
             title="Download LOGIK as a standalone app (ZIP)"
             style={{ marginLeft: '0.5rem', flexShrink: 0 }}
-          >
-            ⬇ Export
-          </button>
+          >⬇ Export</button>}
         </div>
 
         {/* ── Drawers (overlay inside lk-main) ─────────────────────────────── */}
@@ -1654,9 +1686,62 @@ export default function Logik({ onClose, models, selectedModelId, onModelChange 
       )}
 
         {/* ══════════════════════════════════════════════════════════════════
+            BUILD MODE — full-screen Fusion takeover
+            ══════════════════════════════════════════════════════════════════ */}
+        {buildMode && (
+          <>
+            <div className="lk-build-area">
+              <LogikFusionPanel
+                sourceRepo={{ owner: repo2Owner, repo: repo2Name, branch: repo2Branch }}
+                targetRepo={{ owner: repoOwner,  repo: repoName,  branch: baseBranch  }}
+                onRunRitual={p => { agentSession.run(p); }}
+                isRunning={agentSession.isAgentRunning}
+                shadowStatus2={shadowStatus2}
+                buildMode
+              />
+            </div>
+            <div className="lk-build-input-bar">
+              {error && <div className="lk-error" role="alert">{error}</div>}
+              {agentSession.isAgentRunning && (
+                <div className="lk-build-stream">{agentSession.agentStreamText || 'Agent working…'}</div>
+              )}
+              {agentSession.agentSummary && !agentSession.isAgentRunning && (
+                <div className="lk-build-done">
+                  <span className="lk-build-done-icon">✓</span>
+                  <span>{agentSession.agentSummary.slice(0, 160)}</span>
+                  {agentSession.agentFiles.length > 0 && (
+                    <span className="lk-build-done-files"> · {agentSession.agentFiles.length} file{agentSession.agentFiles.length !== 1 ? 's' : ''} changed</span>
+                  )}
+                </div>
+              )}
+              <div className="lk-build-prompt-row">
+                <textarea
+                  className="lk-textarea lk-build-textarea"
+                  placeholder="Custom ritual — describe exactly what to extract and integrate…"
+                  value={prompt}
+                  onChange={e => setPrompt(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  disabled={agentSession.isAgentRunning}
+                  rows={2}
+                />
+                {agentSession.isAgentRunning ? (
+                  <button className="lk-btn lk-btn--abort lk-build-send" onClick={() => agentSession.abort()}>■ Stop</button>
+                ) : (
+                  <button
+                    className="lk-btn lk-btn--send lk-build-send"
+                    onClick={() => agentSession.run(prompt)}
+                    disabled={!prompt.trim()}
+                  ><span className="lk-btn-icon">▶</span> Run</button>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* ══════════════════════════════════════════════════════════════════
             MAIN FEED — full-height scrollable output area
             ══════════════════════════════════════════════════════════════════ */}
-        <div className="lk-feed">
+        {!buildMode && <div className="lk-feed">
 
           {/* ── Feed status strip: plan, amplifier, remediation ──────────── */}
           {(isAmplifying || amplifierDecisions.length > 0 || remediationStatus || isPlanning || filePlan.length > 0) && (
@@ -1927,9 +2012,9 @@ export default function Logik({ onClose, models, selectedModelId, onModelChange 
           )}
 
           </div>{/* end lk-feed-output */}
-        </div>{/* end lk-feed */}
+        </div>}{/* end lk-feed */}
 
-        {/* ══════════════════════════════════════════════════════════════════
+        {!buildMode && <>{/* ══════════════════════════════════════════════════
             BOTTOM INPUT BAR — prompt + controls (Claude Code style)
             ══════════════════════════════════════════════════════════════════ */}
         <div className="lk-input-bar">
@@ -2036,6 +2121,7 @@ export default function Logik({ onClose, models, selectedModelId, onModelChange 
             </div>
           </div>
         </div>{/* end lk-input-bar */}
+        </>}{/* end !buildMode */}
 
       </div>{/* end lk-main */}
     </div>

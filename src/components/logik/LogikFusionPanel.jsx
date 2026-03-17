@@ -97,6 +97,7 @@ const LogikFusionPanel = memo(function LogikFusionPanel({
   onRunRitual,   // (prompt: string) => void
   isRunning,     // bool
   shadowStatus2, // string | null — indexing status of source repo
+  buildMode,     // bool — full-screen takeover mode
 }) {
   const srcLabel = (sourceRepo?.owner && sourceRepo?.repo)
     ? `${sourceRepo.owner}/${sourceRepo.repo}`
@@ -112,35 +113,44 @@ const LogikFusionPanel = memo(function LogikFusionPanel({
   }
 
   return (
-    <div className="lk-fusion-panel">
+    <div className={`lk-fusion-panel${buildMode ? ' lk-fusion-panel--build' : ''}`}>
 
-      {/* ── Repo connection header ── */}
-      <div className="lk-fusion-header">
-        <div className="lk-fusion-repos">
-          <div className="lk-fusion-repo lk-fusion-repo--source">
-            <span className="lk-fusion-repo-role">SOURCE</span>
-            <span className="lk-fusion-repo-name">{srcLabel}</span>
-            {shadowStatus2 && (
-              <span className="lk-fusion-repo-status">{shadowStatus2}</span>
-            )}
+      {/* ── Repo header — only shown in tab mode (build mode uses topbar) ── */}
+      {!buildMode && (
+        <div className="lk-fusion-header">
+          <div className="lk-fusion-repos">
+            <div className="lk-fusion-repo lk-fusion-repo--source">
+              <span className="lk-fusion-repo-role">SOURCE</span>
+              <span className="lk-fusion-repo-name">{srcLabel}</span>
+              {shadowStatus2 && (
+                <span className="lk-fusion-repo-status">{shadowStatus2}</span>
+              )}
+            </div>
+            <div className="lk-fusion-arrow">⟶</div>
+            <div className="lk-fusion-repo lk-fusion-repo--target">
+              <span className="lk-fusion-repo-role">TARGET</span>
+              <span className="lk-fusion-repo-name">{tgtLabel}</span>
+            </div>
           </div>
-          <div className="lk-fusion-arrow">⟶</div>
-          <div className="lk-fusion-repo lk-fusion-repo--target">
-            <span className="lk-fusion-repo-role">TARGET</span>
-            <span className="lk-fusion-repo-name">{tgtLabel}</span>
-          </div>
+          <p className="lk-fusion-desc">
+            Select a ritual — the agent reads source, identifies strengths, and integrates them into target.
+          </p>
         </div>
-        <p className="lk-fusion-desc">
-          Select a ritual — the agent reads source, identifies strengths, and integrates them into target.
+      )}
+
+      {/* ── Build mode heading ── */}
+      {buildMode && (
+        <p className="lk-fusion-build-heading">
+          Select a ritual to begin. The agent will read <strong>{srcLabel}</strong>, identify strengths, and integrate them into <strong>{tgtLabel}</strong>.
         </p>
-      </div>
+      )}
 
       {/* ── Ritual buttons ── */}
-      <div className="lk-fusion-grid">
+      <div className={`lk-fusion-grid${buildMode ? ' lk-fusion-grid--build' : ''}`}>
         {FUSION_RITUALS.map(ritual => (
           <button
             key={ritual.id}
-            className="lk-fusion-btn"
+            className={`lk-fusion-btn${buildMode ? ' lk-fusion-btn--build' : ''}`}
             onClick={() => onRunRitual(resolvePrompt(ritual.prompt))}
             disabled={isRunning}
             title={ritual.description}
