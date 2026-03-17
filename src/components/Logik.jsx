@@ -366,10 +366,19 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
 
   // ── Agent session — managed by hook ────────────────────────────────────
   const activeModel = models?.find(m => m.id === activeModelId) ?? models?.[0]
-  const githubConfig     = { token: githubToken, owner: repoOwner, repo: repoName, branch: baseBranch }
-  const sourceRepoConfig = hasBothRepos
-    ? { token: repo2Token || githubToken, owner: repo2Owner, repo: repo2Name, branch: repo2Branch || 'main' }
-    : null
+  // Memoize config objects so useAgentSession's run callback doesn't get a new
+  // reference on every render (text-delta state updates fire many re-renders).
+  const githubConfig = useMemo(
+    () => ({ token: githubToken, owner: repoOwner, repo: repoName, branch: baseBranch }),
+    [githubToken, repoOwner, repoName, baseBranch],
+  )
+  const sourceRepoConfig = useMemo(
+    () => hasBothRepos
+      ? { token: repo2Token || githubToken, owner: repo2Owner, repo: repo2Name, branch: repo2Branch || 'main' }
+      : null,
+    [hasBothRepos, repo2Token, githubToken, repo2Owner, repo2Name, repo2Branch],
+  )
+  const onPromptClear = useCallback(() => setPrompt(''), [])
   const agentSession = useAgentSession({
     modelConfig:     activeModel,
     githubConfig,
@@ -379,10 +388,11 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
     planMode,
     logActivity,
     updateActivity,
+    clearActivity,
     activityRef,
     onSetActiveTab:  setActiveTab,
     onSetError:      setError,
-    onPromptClear:   () => setPrompt(''),
+    onPromptClear,
   })
 
   // ── Cost estimate (memoized) ───────────────────────────────────────────
@@ -1431,7 +1441,7 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
   const handleKeyDown = e => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
       e.preventDefault()
-      if (!isGenerating && !isPushing) {
+      if (!isGenerating && !isPushing && !agentSession.isAgentRunning) {
         if (generatedCode && refinementPrompt.trim()) handleRefine()
         else handleGenerate()
       }

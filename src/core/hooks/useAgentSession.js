@@ -25,6 +25,7 @@ export function useAgentSession({
   planMode,          // bool — read-only analysis mode
   logActivity,       // (type, msg, detail?) => id
   updateActivity,    // (id, updates) => void
+  clearActivity,     // () => void
   activityRef,       // ref to the activity entries array (for last-entry lookup)
   onFileWrite,       // (path, action) => void (optional)
   onSetActiveTab,    // (tabId) => void
@@ -38,13 +39,17 @@ export function useAgentSession({
 
   const streamTextRef = useRef('')
   const abortRef      = useRef(null)
+  const runningRef    = useRef(false)   // guard against concurrent runs
 
   const run = useCallback(async (task) => {
     if (!task?.trim()) { onSetError?.('Enter a task for the agent.'); return }
     if (!modelConfig)        { onSetError?.('Select a model.'); return }
     if (!modelConfig.apiKey) { onSetError?.(`No API key for "${modelConfig.name}". Open Admin Panel.`); return }
+    if (runningRef.current)  return   // prevent concurrent invocations
 
     onSetError?.('')
+    runningRef.current = true
+    clearActivity()
     setIsAgentRunning(true)
     setAgentSummary('')
     setAgentFiles([])
@@ -184,13 +189,14 @@ export function useAgentSession({
       updateActivity(startId, { status: 'error', msg: `⚡ Agent crashed — ${unexpectedErr.message}` })
       onSetError?.(`Agent crashed: ${unexpectedErr.message}`)
     } finally {
+      runningRef.current = false
       streamTextRef.current = ''
       setAgentStreamText('')
       setIsAgentRunning(false)
       onPromptClear?.()
     }
   }, [modelConfig, githubConfig, sourceRepoConfig, bridgeAvailable, webSearchApiKey, planMode,
-      logActivity, updateActivity, activityRef, onFileWrite, onSetActiveTab, onSetError, onPromptClear])
+      logActivity, updateActivity, clearActivity, activityRef, onFileWrite, onSetActiveTab, onSetError, onPromptClear])
 
   const abort = useCallback(() => {
     abortRef.current?.abort()
