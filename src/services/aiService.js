@@ -39,15 +39,7 @@ function decrypt(text) {
   }
 }
 
-const DEFAULT_MODELS = [
-  {
-    id: 'preset-kimi-k2-5',
-    name: 'Kimi K2.5',
-    apiKey: '',
-    baseUrl: 'https://api.moonshot.cn/v1',
-    modelId: 'kimi-k2.5',
-  },
-]
+const DEFAULT_MODELS = []
 
 // ── Preset catalogue — used by the "Add Model" button in Settings ─────────────
 // Organised by provider.  baseUrl must include any path prefix the provider
@@ -83,15 +75,13 @@ export const MODEL_PRESETS = [
   { id: 'preset-openrouter',       name: 'OpenRouter',           apiKey: '', baseUrl: 'https://openrouter.ai/api/v1',                         modelId: 'meta-llama/llama-3.3-70b-instruct:free' },
   // ── Ollama (local — no key needed) ─────────────────────────────────────────
   { id: 'preset-ollama',           name: 'Ollama (local)',        apiKey: 'ollama', baseUrl: 'http://localhost:11434/v1',                     modelId: 'llama3.2'                   },
-  // ── Custom ─────────────────────────────────────────────────────────────────
-  { id: 'preset-custom',           name: 'Custom',               apiKey: '', baseUrl: '',                                                     modelId: ''                           },
 ]
 
 // IDs that were once automatically included but have since been removed from
 // DEFAULT_MODELS.  They are silently stripped from saved localStorage configs
 // on next load so users don't see orphaned entries they never manually added.
 const LEGACY_PRESET_IDS = new Set([
-  // (none currently — kept for future migrations)
+  'preset-kimi-k2-5',
 ])
 
 export function loadModels() {
@@ -105,11 +95,7 @@ export function loadModels() {
       ? parsed.filter(m => !LEGACY_PRESET_IDS.has(m.id))
       : null
 
-    // Also fix the wrong modelId if it was saved as 'kimi-k2-5' (typo, should be 'kimi-k2.5')
-    const fixed = (migrated || []).map(m =>
-      m.id === 'preset-kimi-k2-5' && m.modelId === 'kimi-k2-5' ? { ...m, modelId: 'kimi-k2.5' } : m
-    )
-    const configs = (!fixed || fixed.length === 0) ? DEFAULT_MODELS : fixed
+    const configs = migrated || DEFAULT_MODELS
 
     // Load API keys from sessionStorage (tab-scoped)
     let keys = {}
@@ -218,6 +204,29 @@ export async function testModelConnection(modelConfig) {
         ? 'Network error — likely a CORS block. Restart the dev server so the new proxy takes effect.'
         : e.message,
     }
+  }
+}
+
+// Test Tavily web-search API key with a minimal search request
+export async function testSearchConnection(apiKey) {
+  if (!apiKey) return { ok: false, error: 'No API key entered' }
+  const t0 = Date.now()
+  try {
+    const res = await fetch('https://api.tavily.com/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ api_key: apiKey, query: 'test', max_results: 1 }),
+    })
+    const ms = Date.now() - t0
+    if (!res.ok) {
+      const text = await res.text()
+      let msg = `HTTP ${res.status}`
+      try { msg = JSON.parse(text)?.detail || msg } catch {}
+      return { ok: false, error: msg }
+    }
+    return { ok: true, ms }
+  } catch (e) {
+    return { ok: false, error: e.message || 'Network error' }
   }
 }
 

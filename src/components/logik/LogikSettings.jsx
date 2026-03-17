@@ -1,5 +1,5 @@
-import { memo, useState, useEffect } from 'react'
-import { clearApiKeys, saveModels, MODEL_PRESETS, testModelConnection, loadSearchKey, saveSearchKey } from '../../services/aiService.js'
+import { memo, useState } from 'react'
+import { clearApiKeys, saveModels, MODEL_PRESETS, testModelConnection, testSearchConnection, loadSearchKey, saveSearchKey } from '../../services/aiService.js'
 import { getRepo } from '../../services/githubService.js'
 import { parseGitHubUrl } from '../../utils/codeUtils.js'
 import {
@@ -57,6 +57,9 @@ const LogikSettings = memo(function LogikSettings({
 
   // Web search
   webSearchApiKey, setWebSearchApiKey,
+
+  // Auth
+  onLogout, userEmail,
 }) {
   const GHTOKEN_SS_KEY = 'logik:ghtoken'
 
@@ -65,9 +68,10 @@ const LogikSettings = memo(function LogikSettings({
     const cfg = loadFirebaseConfig()
     return cfg ? JSON.stringify(cfg, null, 2) : ''
   })
-  const [fbStatus, setFbStatus] = useState(() => getFirebaseStatus())
-  const [fbSaving, setFbSaving] = useState(false)
-  const [fbError,  setFbError]  = useState(null)
+  const [fbStatus,    setFbStatus]    = useState(() => getFirebaseStatus())
+  const [fbSaving,    setFbSaving]    = useState(false)
+  const [fbError,     setFbError]     = useState(null)
+  const [fbCollapsed, setFbCollapsed] = useState(() => getFirebaseStatus().configured)
 
   async function handleSaveFirebase() {
     setFbError(null)
@@ -91,7 +95,9 @@ const LogikSettings = memo(function LogikSettings({
   }
 
   // ── Model API key helper ────────────────────────────────────────────────────
-  const [addModelOpen, setAddModelOpen] = useState(false)
+  const [addModelOpen,   setAddModelOpen]   = useState(false)
+  const [newModelName,   setNewModelName]   = useState('')
+  const [searchTestResult, setSearchTestResult] = useState(null)  // { testing, ok, error, ms }
 
   function updateModelKey(id, key) {
     const updated = (models || []).map(m => m.id === id ? { ...m, apiKey: key } : m)
@@ -108,13 +114,27 @@ const LogikSettings = memo(function LogikSettings({
   function addPreset(preset) {
     const already = (models || []).some(m => m.id === preset.id)
     if (already) { setAddModelOpen(false); return }
-    const id = preset.id === 'preset-custom'
-      ? `custom-${Date.now()}`
-      : preset.id
-    const updated = [...(models || []), { ...preset, id }]
+    const updated = [...(models || []), { ...preset }]
     setModels(updated)
     saveModels(updated)
     setAddModelOpen(false)
+  }
+
+  function addCustomModel() {
+    const name = newModelName.trim()
+    if (!name) return
+    const id = `custom-${Date.now()}`
+    const updated = [...(models || []), { id, name, apiKey: '', baseUrl: '', modelId: '' }]
+    setModels(updated)
+    saveModels(updated)
+    setNewModelName('')
+    setAddModelOpen(false)
+  }
+
+  async function handleTestSearch() {
+    setSearchTestResult({ testing: true })
+    const result = await testSearchConnection(webSearchApiKey)
+    setSearchTestResult({ testing: false, ...result })
   }
 
   function removeModel(id) {
@@ -135,6 +155,16 @@ const LogikSettings = memo(function LogikSettings({
   return (
     <div className="lk-drawer lk-drawer--settings">
 
+      {/* ── Account ───────────────────────────────────────────────────────── */}
+      {onLogout && (
+        <div className="lk-settings-account">
+          {userEmail && <span className="lk-settings-account-email">{userEmail}</span>}
+          <button className="lk-btn lk-btn--small lk-btn--warn" onClick={onLogout}>
+            ⏻ Log out
+          </button>
+        </div>
+      )}
+
       {/* ── AI API & Services ─────────────────────────────────────────────── */}
       <div className="lk-settings-section">
         <div className="lk-settings-section-hd">
@@ -149,15 +179,22 @@ const LogikSettings = memo(function LogikSettings({
           {(models || []).map(m => (
             <div key={m.id} className="lk-settings-model-row">
               <div className="lk-settings-model-row-hd">
-                <span className="lk-settings-model-name">{m.name}</span>
-                {(models || []).length > 1 && (
-                  <button className="lk-settings-model-remove" onClick={() => removeModel(m.id)} title="Remove model">×</button>
+                {m.id.startsWith('custom-') ? (
+                  <input
+                    className="lk-input lk-settings-model-name-input"
+                    placeholder="Model name"
+                    value={m.name || ''}
+                    onChange={e => updateModelField(m.id, 'name', e.target.value)}
+                  />
+                ) : (
+                  <span className="lk-settings-model-name">{m.name}</span>
                 )}
+                <button className="lk-settings-model-remove" onClick={() => removeModel(m.id)} title="Remove model">×</button>
               </div>
               <input
                 className="lk-input"
                 type="password"
-                placeholder={`API key for ${m.name}`}
+                placeholder={`API key for ${m.name || 'this model'}`}
                 value={m.apiKey || ''}
                 onChange={e => updateModelKey(m.id, e.target.value)}
                 autoComplete="off"
@@ -195,7 +232,21 @@ const LogikSettings = memo(function LogikSettings({
           {/* Add Model */}
           {addModelOpen ? (
             <div className="lk-settings-add-model">
-              <div className="lk-settings-add-model-hd">Choose a model to add</div>
+              <div className="lk-settings-add-model-hd">Add a custom model</div>
+              <div className="lk-settings-add-custom">
+                <input
+                  className="lk-input"
+                  placeholder="Name (e.g. My GPT-4o)"
+                  value={newModelName}
+                  onChange={e => setNewModelName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && addCustomModel()}
+                  autoFocus
+                />
+                <button className="lk-btn lk-btn--small lk-btn--primary" onClick={addCustomModel} disabled={!newModelName.trim()}>
+                  Add
+                </button>
+              </div>
+              <div className="lk-settings-add-model-hd" style={{ marginTop: '0.75rem' }}>Or pick a preset</div>
               {MODEL_PRESETS
                 .filter(p => !(models || []).some(m => m.id === p.id))
                 .map(p => (
@@ -205,7 +256,7 @@ const LogikSettings = memo(function LogikSettings({
                   </button>
                 ))
               }
-              <button className="lk-btn lk-btn--small" onClick={() => setAddModelOpen(false)}>Cancel</button>
+              <button className="lk-btn lk-btn--small" onClick={() => { setAddModelOpen(false); setNewModelName('') }}>Cancel</button>
             </div>
           ) : (
             <button className="lk-btn lk-btn--small lk-settings-add-btn" onClick={() => setAddModelOpen(true)}>
@@ -235,20 +286,35 @@ const LogikSettings = memo(function LogikSettings({
             onChange={e => {
               setWebSearchApiKey(e.target.value)
               saveSearchKey(e.target.value)
+              setSearchTestResult(null)
             }}
             autoComplete="off"
           />
-          {webSearchApiKey && (
-            <span className="lk-settings-test-result lk-settings-test-result--ok">
-              ● Web search active
-            </span>
-          )}
+          <div className="lk-settings-model-test">
+            <button
+              className="lk-btn lk-btn--small"
+              disabled={!webSearchApiKey || searchTestResult?.testing}
+              onClick={handleTestSearch}
+            >
+              {searchTestResult?.testing ? '…Testing' : 'Test Connection'}
+            </button>
+            {searchTestResult && !searchTestResult.testing && (
+              <span className={`lk-settings-test-result lk-settings-test-result--${searchTestResult.ok ? 'ok' : 'fail'}`}>
+                {searchTestResult.ok
+                  ? `● Connected (${searchTestResult.ms}ms)`
+                  : `✗ ${searchTestResult.error}`}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
       {/* ── Firebase ──────────────────────────────────────────────────────── */}
       <div className="lk-settings-section">
-        <div className="lk-settings-section-hd">
+        <button
+          className="lk-settings-section-hd lk-settings-section-hd--btn"
+          onClick={() => setFbCollapsed(c => !c)}
+        >
           <span className="lk-settings-section-icon">🔥</span>
           Firebase / Cloud Storage
           {fbStatus.configured && (
@@ -256,56 +322,47 @@ const LogikSettings = memo(function LogikSettings({
               {fbStatus.initialised ? '● connected' : '● config saved'}
             </span>
           )}
-        </div>
-        <div className="lk-settings-section-body">
-
-          {/* Setup instructions */}
-          <div className="lk-firebase-steps">
-            <div className="lk-firebase-steps-hd">Setup</div>
-            <ol className="lk-firebase-ol">
-              <li>Go to <strong>console.firebase.google.com</strong> → select or create a project</li>
-              <li>Project Settings → <em>Your apps</em> → add a <strong>Web app</strong></li>
-              <li>Copy the <code>firebaseConfig</code> object shown after registration</li>
-              <li>Paste it below (the entire object or JSON) and click <strong>Save &amp; Connect</strong></li>
-              <li>Enable services you want: <em>Firestore</em>, <em>Storage</em>, <em>Authentication</em> in the Firebase Console</li>
-              <li><em>Optional:</em> deploy a Cloud Functions backend and set the Proxy URL above to manage API keys server-side</li>
-            </ol>
-          </div>
-
-          <label className="lk-label">Firebase Config</label>
-          <textarea
-            className="lk-logikmd-editor lk-firebase-textarea"
-            placeholder={`Paste your Firebase config here, e.g.:\n{\n  "apiKey": "AIzaSy...",\n  "authDomain": "your-project.firebaseapp.com",\n  "projectId": "your-project",\n  "storageBucket": "your-project.appspot.com",\n  "messagingSenderId": "123456789",\n  "appId": "1:123456789:web:abcdef"\n}`}
-            value={fbDraft}
-            onChange={e => { setFbDraft(e.target.value); setFbError(null) }}
-            rows={9}
-            spellCheck={false}
-          />
-
-          {fbError && <div className="lk-firebase-error">{fbError}</div>}
-
-          {fbStatus.configured && fbStatus.projectId && (
-            <div className="lk-firebase-project">
-              Project: <strong>{fbStatus.projectId}</strong>
-              {fbStatus.initialised ? ' · SDK initialised' : ' · SDK not yet initialised'}
-            </div>
-          )}
-
-          <div className="lk-settings-row-actions">
-            <button
-              className="lk-btn lk-btn--primary lk-btn--small"
-              onClick={handleSaveFirebase}
-              disabled={fbSaving || !fbDraft.trim()}
-            >
-              {fbSaving ? 'Connecting…' : '🔥 Save & Connect'}
-            </button>
-            {fbStatus.configured && (
-              <button className="lk-btn lk-btn--small lk-btn--warn" onClick={handleClearFirebase}>
-                Disconnect
-              </button>
+          <span className="lk-settings-collapse-arrow" style={{ marginLeft: 'auto' }}>
+            {fbCollapsed ? '▸' : '▾'}
+          </span>
+        </button>
+        {!fbCollapsed && (
+          <div className="lk-settings-section-body">
+            {fbStatus.configured && fbStatus.projectId && (
+              <div className="lk-firebase-project">
+                Project: <strong>{fbStatus.projectId}</strong>
+                {fbStatus.initialised ? ' · connected' : ' · not yet initialised'}
+              </div>
             )}
+
+            <label className="lk-label">Firebase Config (JSON)</label>
+            <textarea
+              className="lk-logikmd-editor lk-firebase-textarea"
+              placeholder={`Paste your Firebase config here, e.g.:\n{\n  "apiKey": "AIzaSy...",\n  "authDomain": "your-project.firebaseapp.com",\n  "projectId": "your-project",\n  "storageBucket": "your-project.appspot.com",\n  "messagingSenderId": "123456789",\n  "appId": "1:123456789:web:abcdef"\n}`}
+              value={fbDraft}
+              onChange={e => { setFbDraft(e.target.value); setFbError(null) }}
+              rows={8}
+              spellCheck={false}
+            />
+
+            {fbError && <div className="lk-firebase-error">{fbError}</div>}
+
+            <div className="lk-settings-row-actions">
+              <button
+                className="lk-btn lk-btn--primary lk-btn--small"
+                onClick={handleSaveFirebase}
+                disabled={fbSaving || !fbDraft.trim()}
+              >
+                {fbSaving ? 'Connecting…' : '🔥 Save & Connect'}
+              </button>
+              {fbStatus.configured && (
+                <button className="lk-btn lk-btn--small lk-btn--warn" onClick={handleClearFirebase}>
+                  Disconnect
+                </button>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Quick setup — paste a GitHub URL to fill owner + repo */}
