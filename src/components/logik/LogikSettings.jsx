@@ -1,5 +1,5 @@
 import { memo, useState, useEffect } from 'react'
-import { clearApiKeys, saveModels, MODEL_PRESETS } from '../../services/aiService.js'
+import { clearApiKeys, saveModels, MODEL_PRESETS, testModelConnection } from '../../services/aiService.js'
 import { getRepo } from '../../services/githubService.js'
 import { parseGitHubUrl } from '../../utils/codeUtils.js'
 import {
@@ -120,6 +120,15 @@ const LogikSettings = memo(function LogikSettings({
     saveModels(updated)
   }
 
+  // ── Test connection ─────────────────────────────────────────────────────────
+  const [testResults, setTestResults] = useState({})  // { [modelId]: { testing, ok, error, ms } }
+
+  async function handleTestConnection(m) {
+    setTestResults(r => ({ ...r, [m.id]: { testing: true } }))
+    const result = await testModelConnection(m)
+    setTestResults(r => ({ ...r, [m.id]: { testing: false, ...result } }))
+  }
+
   return (
     <div className="lk-drawer lk-drawer--settings">
 
@@ -159,6 +168,24 @@ const LogikSettings = memo(function LogikSettings({
                 </>
               )}
               {!m.id.startsWith('custom-') && <span className="lk-hint">{m.baseUrl}</span>}
+
+              {/* Test connection */}
+              <div className="lk-settings-model-test">
+                <button
+                  className="lk-btn lk-btn--small"
+                  disabled={!m.apiKey || testResults[m.id]?.testing}
+                  onClick={() => handleTestConnection(m)}
+                >
+                  {testResults[m.id]?.testing ? '…Testing' : 'Test Connection'}
+                </button>
+                {testResults[m.id] && !testResults[m.id].testing && (
+                  <span className={`lk-settings-test-result lk-settings-test-result--${testResults[m.id].ok ? 'ok' : 'fail'}`}>
+                    {testResults[m.id].ok
+                      ? `● Connected (${testResults[m.id].ms}ms)`
+                      : `✗ ${testResults[m.id].error}`}
+                  </span>
+                )}
+              </div>
             </div>
           ))}
 

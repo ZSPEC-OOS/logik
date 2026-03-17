@@ -120,6 +120,48 @@ export function clearApiKeys() {
   } catch {}
 }
 
+// ── Test connection ───────────────────────────────────────────────────────────
+// Sends a minimal non-streaming request to verify the API key and endpoint work.
+// Returns { ok: true, model, ms } or { ok: false, error }
+export async function testModelConnection(modelConfig) {
+  const { apiKey, baseUrl, modelId } = modelConfig || {}
+  if (!apiKey)   return { ok: false, error: 'No API key entered' }
+  if (!baseUrl)  return { ok: false, error: 'No base URL configured' }
+  if (!modelId)  return { ok: false, error: 'No model ID configured' }
+
+  const t0 = Date.now()
+  try {
+    const isAnthropic = isAnthropicUrl(baseUrl)
+    let url, options
+
+    if (isAnthropic) {
+      ;({ url, options } = buildAnthropicRequest(baseUrl, apiKey, modelId, {
+        max_tokens: 16,
+        stream: false,
+        messages: [{ role: 'user', content: 'Hi' }],
+      }, modelConfig))
+    } else {
+      ;({ url, options } = buildOpenAIRequest(baseUrl, apiKey, modelId, {
+        max_tokens: 16,
+        stream: false,
+        messages: [{ role: 'user', content: 'Hi' }],
+      }, modelConfig))
+    }
+
+    const res = await fetch(url, options)
+    const ms  = Date.now() - t0
+    if (!res.ok) {
+      const body = await res.text()
+      let msg = `HTTP ${res.status}`
+      try { msg = JSON.parse(body)?.error?.message || msg } catch {}
+      return { ok: false, error: msg }
+    }
+    return { ok: true, model: modelId, ms }
+  } catch (e) {
+    return { ok: false, error: e.message }
+  }
+}
+
 function isAnthropicUrl(baseUrl) {
   return baseUrl.includes('api.anthropic.com')
 }

@@ -2622,6 +2622,21 @@ kbd {
   color: var(--lk-fg);
 }
 
+.lk-settings-model-test {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.lk-settings-test-result {
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.lk-settings-test-result--ok   { color: #34d399; }
+.lk-settings-test-result--fail { color: #f87171; }
+
 /* Firebase specific */
 .lk-firebase-steps {
   background: color-mix(in srgb, var(--lk-accent) 4%, var(--lk-bg));
