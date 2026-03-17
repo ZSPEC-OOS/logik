@@ -140,6 +140,37 @@ class ShadowContextStore {
   // Number of files in the content index (for diagnostics)
   indexedFileCount() { return Object.keys(this._contentIndex).length }
 
+  // Aider-style repo map: a compact symbol index ranked by import-graph centrality.
+  // Returns a string like:
+  //   src/services/agentLoop.js: runAgentLoop, pruneMessages
+  //   src/components/Logik.jsx: Logik
+  // Ranked by in-degree (most-imported files first), token-budgeted by maxChars.
+  buildRepoMap(maxChars = 3000) {
+    const index = this._contentIndex
+    if (!index || Object.keys(index).length === 0) return null
+
+    // Compute import in-degree for each file
+    const inDegree = {}
+    for (const deps of Object.values(this._importGraph || {})) {
+      for (const dep of deps) inDegree[dep] = (inDegree[dep] || 0) + 1
+    }
+
+    const ranked = Object.entries(index)
+      .map(([path, entry]) => ({ path, symbols: entry.symbols || [], degree: inDegree[path] || 0 }))
+      .filter(f => f.symbols.length > 0)
+      .sort((a, b) => b.degree - a.degree || a.path.localeCompare(b.path))
+
+    const lines = []
+    let chars = 0
+    for (const { path, symbols } of ranked) {
+      const line = `${path}: ${symbols.slice(0, 12).join(', ')}`
+      if (chars + line.length + 1 > maxChars) break
+      lines.push(line)
+      chars += line.length + 1
+    }
+    return lines.length ? lines.join('\n') : null
+  }
+
   // Force reindexing (clears cache and re-crawls the repo)
   async reindex() {
     if (!this._config) return
