@@ -448,6 +448,8 @@ async function readAnthropicToolStream(res, signal, onTextDelta) {
   const blocks     = {}   // index → block object (any type)
   const toolBlocks = {}   // index → { id, name, jsonParts[] }  (subset of blocks)
   let stopReason   = null
+  // Claude Code-style token usage tracking — captured from message_start / message_delta
+  const usage      = { input: 0, output: 0 }
 
   while (true) {
     if (signal?.aborted) { reader.cancel(); break }
@@ -468,7 +470,10 @@ async function readAnthropicToolStream(res, signal, onTextDelta) {
       if (data === '[DONE]') continue
       try {
         const ev = JSON.parse(data)
-        if (ev.type === 'content_block_start') {
+        if (ev.type === 'message_start') {
+          // Capture input token count from the opening message envelope
+          if (ev.message?.usage?.input_tokens) usage.input = ev.message.usage.input_tokens
+        } else if (ev.type === 'content_block_start') {
           const cb = ev.content_block
           if (cb?.type === 'tool_use') {
             toolBlocks[ev.index] = { id: cb.id, name: cb.name, jsonParts: [] }
@@ -490,6 +495,8 @@ async function readAnthropicToolStream(res, signal, onTextDelta) {
           }
         } else if (ev.type === 'message_delta') {
           stopReason = ev.delta?.stop_reason
+          // Capture output token count from the closing delta
+          if (ev.usage?.output_tokens) usage.output = ev.usage.output_tokens
         }
       } catch {}
     }
@@ -516,7 +523,7 @@ async function readAnthropicToolStream(res, signal, onTextDelta) {
       return []
     })
 
-  return { text: fullText, toolCalls, isDone: stopReason === 'end_turn' || toolCalls.length === 0, _raw }
+  return { text: fullText, toolCalls, isDone: stopReason === 'end_turn' || toolCalls.length === 0, _raw, usage }
 }
 
 async function readOpenAIToolStream(res, signal, onTextDelta) {
@@ -527,6 +534,8 @@ async function readOpenAIToolStream(res, signal, onTextDelta) {
   let reasoningContent = ''
   const tcMap   = {}   // index → { id, name, argParts[] }
   let finishReason = null
+  // Claude Code-style token usage (sent in the final chunk when stream_options.include_usage=true)
+  const usage   = { input: 0, output: 0 }
 
   while (true) {
     if (signal?.aborted) { reader.cancel(); break }
@@ -547,6 +556,11 @@ async function readOpenAIToolStream(res, signal, onTextDelta) {
       if (data === '[DONE]') continue
       try {
         const ev     = JSON.parse(data)
+        // Capture usage from the final summary chunk (stream_options.include_usage=true)
+        if (ev.usage) {
+          if (ev.usage.prompt_tokens)     usage.input  = ev.usage.prompt_tokens
+          if (ev.usage.completion_tokens) usage.output = ev.usage.completion_tokens
+        }
         const choice = ev.choices?.[0]
         if (!choice) continue
         const delta  = choice.delta
@@ -593,7 +607,7 @@ async function readOpenAIToolStream(res, signal, onTextDelta) {
 
   // isDone when no tool calls to execute — finish_reason can be 'stop', 'tool_calls',
   // or null (stream cut off). We drive the loop by tool call presence, not reason string.
-  return { text: fullText, toolCalls, isDone: toolCalls.length === 0, _raw }
+  return { text: fullText, toolCalls, isDone: toolCalls.length === 0, _raw, usage }
 }
 
 // ── callWithToolsStreaming — streaming tool-use call ──────────────────────────
@@ -617,6 +631,7 @@ export async function callWithToolsStreaming(modelConfig, messages, tools, signa
   }))
   const { url, options } = buildOpenAIRequest(baseUrl, apiKey, modelId, {
     stream: true, tools: openAITools, tool_choice: 'auto', messages,
+    stream_options: { include_usage: true },  // Claude Code-style per-turn token accounting
   }, modelConfig)
   const res = await fetchWithRetry(url, { ...options, signal })
   if (!res.ok) { const err = await res.text(); throw new Error(`AI API error ${res.status}: ${err}`) }

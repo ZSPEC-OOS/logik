@@ -139,6 +139,14 @@ export function useAgentSession({
             break
           }
 
+          case 'usage': {
+            // Claude Code-style per-turn token accounting (↑ input  ↓ output)
+            const fmt = n => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n)
+            if (ev.inputTokens || ev.outputTokens)
+              logActivity('agent', `↑ ${fmt(ev.inputTokens)} in  ↓ ${fmt(ev.outputTokens)} out`)
+            break
+          }
+
           case 'file_write':
             logActivity('write', `✏ ${ev.action}: ${ev.path}`)
             break

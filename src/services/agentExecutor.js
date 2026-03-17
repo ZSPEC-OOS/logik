@@ -23,6 +23,7 @@ import {
   deleteFile,
   listDirectory,
   createPullRequest,
+  listFileCommits,
 } from './githubService.js'
 import { decodeBase64 } from '../utils/base64.js'
 import { shadowContext } from './shadowContext.js'
@@ -342,6 +343,36 @@ export function makeExecutor({ token, owner, repo, branch, onFileWrite, sourceRe
         const icons = { add: '📋', in_progress: '⚙', done: '✓' }
         const icon = icons[input.action] || '📋'
         return `${icon} [${input.action}] ${input.task}`
+      }
+
+      // ── revert_file (Claude Code-style undo) ───────────────────────────
+      // Restores a file to its state N commits before its most recent change.
+      // Uses the GitHub Commits API to find the prior version's tree SHA, then
+      // reads the blob at that commit and writes it back as a new revert commit.
+      case 'revert_file': {
+        const n = Math.max(1, Math.min(input.commits_back || 1, 10))
+        // Fetch the last (n+1) commits that touched this file
+        const commits = await listFileCommits(token, owner, repo, input.path, branch, n + 1)
+        if (commits.length < n + 1) {
+          if (commits.length === 0)
+            return `revert_file failed: no commit history found for ${input.path} on branch ${branch}.`
+          return `revert_file failed: only ${commits.length} commit(s) found for ${input.path}, cannot go back ${n}.`
+        }
+        // The commit at index n is the one *before* the last n changes
+        const targetSha = commits[n].sha
+        // Read the file content at that historical commit
+        const historical = await getFileContent(token, owner, repo, input.path, targetSha)
+        if (!historical?.content)
+          return `revert_file failed: could not retrieve ${input.path} at commit ${targetSha.slice(0, 7)}.`
+        const content = decodeBase64(historical.content)
+        // Get the current file SHA so we can overwrite it
+        const current = await getFileContent(token, owner, repo, input.path, branch)
+        if (!current?.sha)
+          return `revert_file failed: could not get current SHA for ${input.path}.`
+        const msg = input.message || `revert(${input.path.split('/').pop()}): restore to ${targetSha.slice(0, 7)}`
+        await createOrUpdateFile(token, owner, repo, input.path, content, msg, branch, current.sha)
+        onFileWrite?.(input.path, 'edit')
+        return `Reverted: ${input.path} → restored to state at ${targetSha.slice(0, 7)} (${commits[n].message})`
       }
 
       default:
