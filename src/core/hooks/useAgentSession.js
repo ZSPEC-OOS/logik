@@ -60,6 +60,7 @@ export function useAgentSession({
       branch:          githubConfig.branch,
       sourceRepoConfig,
       webSearchApiKey: webSearchApiKey || '',
+      bridgeAvailable: !!bridgeAvailable,
       onFileWrite: (path, action) => {
         setAgentFiles(prev => prev.includes(path) ? prev : [...prev, path])
         onFileWrite?.(path, action)

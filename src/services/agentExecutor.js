@@ -4,12 +4,17 @@
 // that the agentic loop calls for each tool the model requests.
 //
 // Execution routes:
-//   read_file       → GitHub Contents API
-//   write_file      → GitHub Contents API (create or update)
-//   edit_file       → read → patch → write via GitHub
-//   list_directory  → GitHub Contents API (paginated)
-//   search_files    → ShadowContext relevance index
-//   run_command     → Vite exec bridge (POST /api/exec)
+//   read_file         → GitHub Contents API (with optional line range)
+//   read_many_files   → GitHub Contents API (parallel batch)
+//   write_file        → GitHub Contents API (create or update)
+//   edit_file         → read → patch → write via GitHub
+//   list_directory    → GitHub Contents API (paginated, includes file sizes)
+//   search_files      → ShadowContext relevance index
+//   grep              → ShadowContext content index (regex search)
+//   web_fetch         → exec bridge curl | direct fetch fallback
+//   web_search        → Tavily REST API
+//   update_memory     → appends note to LOGIK.md via GitHub API
+//   run_command       → Vite exec bridge (POST /api/exec)
 //   create_pull_request → GitHub Pulls API
 
 import {
@@ -64,16 +69,35 @@ async function tavilySearch(apiKey, query, maxResults, includeDomains) {
   return res.json()
 }
 
-export function makeExecutor({ token, owner, repo, branch, onFileWrite, sourceRepoConfig, webSearchApiKey }) {
+export function makeExecutor({ token, owner, repo, branch, onFileWrite, sourceRepoConfig, webSearchApiKey, bridgeAvailable }) {
   return async function executeTool(name, input) {
     switch (name) {
 
-      // ── read_file ──────────────────────────────────────────────────────
+      // ── read_file (with optional line range) ───────────────────────────
       case 'read_file': {
         const file = await getFileContent(token, owner, repo, input.path, branch)
         if (!file?.content) return `File not found: ${input.path}`
         const content = decodeBase64(file.content)
-        return `--- ${input.path} (${content.split('\n').length} lines) ---\n${content.slice(0, 20000)}`
+        const lines   = content.split('\n')
+        if (input.start_line || input.end_line) {
+          const s = Math.max(0, (input.start_line || 1) - 1)
+          const e = Math.min(lines.length, input.end_line || lines.length)
+          return `--- ${input.path} (lines ${s + 1}–${e} of ${lines.length}) ---\n${lines.slice(s, e).join('\n')}`
+        }
+        return `--- ${input.path} (${lines.length} lines) ---\n${content.slice(0, 20000)}`
+      }
+
+      // ── read_many_files ────────────────────────────────────────────────
+      case 'read_many_files': {
+        const paths = (input.paths || []).slice(0, 20)
+        if (paths.length === 0) return 'No paths provided.'
+        const settled = await Promise.allSettled(paths.map(async p => {
+          const file = await getFileContent(token, owner, repo, p, branch)
+          if (!file?.content) return `--- ${p} ---\nFile not found.`
+          const content = decodeBase64(file.content)
+          return `--- ${p} (${content.split('\n').length} lines) ---\n${content.slice(0, 10000)}`
+        }))
+        return settled.map(r => r.status === 'fulfilled' ? r.value : `Error: ${r.reason}`).join('\n\n')
       }
 
       // ── write_file ─────────────────────────────────────────────────────
@@ -121,11 +145,30 @@ export function makeExecutor({ token, owner, repo, branch, onFileWrite, sourceRe
         return `Deleted: ${input.path}`
       }
 
-      // ── list_directory ─────────────────────────────────────────────────
+      // ── list_directory (with file sizes) ──────────────────────────────
       case 'list_directory': {
         const items = await listDirectory(token, owner, repo, input.path || '', branch)
         if (items.length === 0) return `Empty or not found: ${input.path || '/'}`
-        return items.map(i => `${i.type === 'dir' ? 'd' : 'f'} ${i.path}`).join('\n')
+        return items.map(i => {
+          const sz = i.type === 'file' && i.size ? ` (${(i.size / 1024).toFixed(1)} KB)` : ''
+          return `${i.type === 'dir' ? 'd' : 'f'} ${i.path}${sz}`
+        }).join('\n')
+      }
+
+      // ── grep ───────────────────────────────────────────────────────────
+      case 'grep': {
+        if (!shadowContext.isReady)
+          return `Codebase index not ready (${shadowContext.indexedFileCount()} files indexed). Try list_directory instead.`
+        let results
+        try {
+          results = shadowContext.grepContent(input.pattern, input.path || null, input.ignore_case ? 'i' : '')
+        } catch (e) {
+          return `grep error: ${e.message}`
+        }
+        if (results.length === 0) return `No matches for /${input.pattern}/${input.ignore_case ? 'i' : ''} in ${shadowContext.indexedFileCount()} indexed files.`
+        const lines = results.slice(0, 150).map(r => `${r.path}:${r.line}: ${r.text.trimEnd()}`)
+        const suffix = results.length > 150 ? `\n… (${results.length - 150} more results, refine the pattern)` : ''
+        return lines.join('\n') + suffix
       }
 
       // ── search_files ───────────────────────────────────────────────────
@@ -172,6 +215,46 @@ export function makeExecutor({ token, owner, repo, branch, onFileWrite, sourceRe
         const items = await listDirectory(sToken || token, sOwner, sRepo, input.path || '', sBranch)
         if (items.length === 0) return `Empty or not found in source repo: ${input.path || '/'}`
         return items.map(i => `${i.type === 'dir' ? 'd' : 'f'} ${i.path}`).join('\n')
+      }
+
+      // ── web_fetch ──────────────────────────────────────────────────────
+      case 'web_fetch': {
+        // Prefer exec-bridge curl (avoids CORS, strips HTML to plain text)
+        if (bridgeAvailable) {
+          const safe = input.url.replace(/"/g, '\\"')
+          const raw = await execBridge(`curl -s -L --max-time 20 --max-filesize 500000 -A "Mozilla/5.0" "${safe}"`, null)
+          const text = raw
+            .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+            .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+            .replace(/\s+/g, ' ').trim()
+            .slice(0, 15000)
+          return text || '(empty response)'
+        }
+        // Fallback: direct browser fetch (works for CORS-enabled APIs / raw files)
+        try {
+          const res = await fetch(input.url, { signal: AbortSignal.timeout(20000) })
+          if (!res.ok) return `HTTP ${res.status}: ${res.statusText}`
+          const text = await res.text()
+          return text.slice(0, 15000)
+        } catch (err) {
+          return `web_fetch failed: ${err.message}. For arbitrary URLs, run with the exec bridge (npm run dev).`
+        }
+      }
+
+      // ── update_memory ──────────────────────────────────────────────────
+      case 'update_memory': {
+        const memPath = 'LOGIK.md'
+        const existing = await getFileContent(token, owner, repo, memPath, branch)
+        const current  = existing?.content ? decodeBase64(existing.content) : ''
+        const today    = new Date().toISOString().slice(0, 10)
+        const appended = `${current.trimEnd()}\n\n## Agent Note (${today})\n\n${input.note.trim()}\n`
+        const sha = existing?.sha || null
+        await createOrUpdateFile(token, owner, repo, memPath, appended,
+          `agent: memory — ${input.note.slice(0, 60)}`, branch, sha)
+        onFileWrite?.(memPath, 'edit')
+        return `Memory updated: appended note to ${memPath}`
       }
 
       // ── web_search ─────────────────────────────────────────────────────

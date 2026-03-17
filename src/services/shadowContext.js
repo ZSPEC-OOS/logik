@@ -116,6 +116,30 @@ class ShadowContextStore {
   getConventions() { return this._conventions }
   getLogikMd()     { return this.logikMd }
 
+  // Regex search across indexed file content.
+  // Returns [{path, line, text}] — max 200 results.
+  // Only covers files in the content index (~800 files max).
+  grepContent(pattern, pathFilter = null, flags = '') {
+    const results = []
+    let re
+    try { re = new RegExp(pattern, flags) } catch (e) { throw new Error(`Invalid regex: ${e.message}`) }
+    for (const [path, entry] of Object.entries(this._contentIndex)) {
+      if (pathFilter && !path.startsWith(pathFilter)) continue
+      if (!entry.full) continue
+      const lines = entry.full.split('\n')
+      for (let i = 0; i < lines.length; i++) {
+        if (re.test(lines[i])) {
+          results.push({ path, line: i + 1, text: lines[i] })
+          if (results.length >= 200) return results
+        }
+      }
+    }
+    return results
+  }
+
+  // Number of files in the content index (for diagnostics)
+  indexedFileCount() { return Object.keys(this._contentIndex).length }
+
   // Force reindexing (clears cache and re-crawls the repo)
   async reindex() {
     if (!this._config) return

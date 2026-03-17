@@ -61,6 +61,19 @@ function pruneMessages(messages) {
   return [...head, ...trimmed]
 }
 
+// ── Loop detection ────────────────────────────────────────────────────────────
+// If the agent calls the exact same set of tools with the same inputs 3 turns
+// in a row it has likely entered an infinite loop.  We inject a recovery note
+// into the conversation so the model tries a different approach.
+const LOOP_WINDOW = 3
+
+function toolSignature(toolCalls) {
+  return toolCalls
+    .map(tc => `${tc.name}:${JSON.stringify(tc.input).slice(0, 100)}`)
+    .sort()
+    .join('|')
+}
+
 // ── Main entry point ──────────────────────────────────────────────────────────
 export async function runAgentLoop({
   task,
@@ -77,6 +90,7 @@ export async function runAgentLoop({
     (!modelConfig.provider && modelConfig.baseUrl?.includes('api.anthropic.com'))
 
   const filesChanged = []
+  const recentSigs   = []   // rolling window of tool-call signatures for loop detection
 
   // Initial message — system prompt is injected as first user message
   // (both Anthropic and OpenAI accept a system field or a leading user message)
@@ -147,6 +161,17 @@ export async function runAgentLoop({
       response.toolCalls, results, isAnthropic, response._raw,
     )
     messages = pruneMessages([...messages, ...nextMessages])
+
+    // ── Loop detection ────────────────────────────────────────────────────
+    const sig = toolSignature(response.toolCalls)
+    recentSigs.push(sig)
+    if (recentSigs.length > LOOP_WINDOW) recentSigs.shift()
+    if (recentSigs.length === LOOP_WINDOW && recentSigs.every(s => s === sig)) {
+      recentSigs.length = 0   // reset so we only fire once per loop cycle
+      const recoveryNote = '⚠ You appear to be repeating the same tool calls. Try a completely different approach, re-read the relevant files, or conclude with what you have found so far.'
+      messages.push({ role: 'user', content: recoveryNote })
+      onEvent({ type: 'text_delta', delta: '\n[Loop detected — injecting recovery prompt]\n' })
+    }
   }
 
   // Hit MAX_TURNS — emit whatever we have
