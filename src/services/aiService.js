@@ -373,7 +373,11 @@ async function readAnthropicToolStream(res, signal, onTextDelta) {
   const decoder = new TextDecoder()
   let buffer    = ''
   let fullText  = ''
-  const toolBlocks = {}   // index → { id, name, jsonParts[] }
+  // Track all content blocks by index so we can reconstruct _raw in the correct
+  // order.  Anthropic requires thinking blocks to be present in subsequent turns
+  // when extended thinking is active — stripping them causes a 400 on turn 2+.
+  const blocks     = {}   // index → block object (any type)
+  const toolBlocks = {}   // index → { id, name, jsonParts[] }  (subset of blocks)
   let stopReason   = null
 
   while (true) {
@@ -389,12 +393,23 @@ async function readAnthropicToolStream(res, signal, onTextDelta) {
       if (data === '[DONE]') continue
       try {
         const ev = JSON.parse(data)
-        if (ev.type === 'content_block_start' && ev.content_block?.type === 'tool_use') {
-          toolBlocks[ev.index] = { id: ev.content_block.id, name: ev.content_block.name, jsonParts: [] }
+        if (ev.type === 'content_block_start') {
+          const cb = ev.content_block
+          if (cb?.type === 'tool_use') {
+            toolBlocks[ev.index] = { id: cb.id, name: cb.name, jsonParts: [] }
+            blocks[ev.index] = { _toolIndex: ev.index }  // placeholder; filled after parse
+          } else if (cb?.type === 'thinking') {
+            blocks[ev.index] = { type: 'thinking', thinking: '' }
+          } else if (cb?.type === 'text') {
+            blocks[ev.index] = { type: 'text', text: '' }
+          }
         } else if (ev.type === 'content_block_delta') {
           if (ev.delta?.type === 'text_delta') {
             fullText += ev.delta.text
             onTextDelta?.(ev.delta.text)
+            if (blocks[ev.index]) blocks[ev.index].text = (blocks[ev.index].text || '') + ev.delta.text
+          } else if (ev.delta?.type === 'thinking_delta' && blocks[ev.index]) {
+            blocks[ev.index].thinking = (blocks[ev.index].thinking || '') + ev.delta.thinking
           } else if (ev.delta?.type === 'input_json_delta' && toolBlocks[ev.index]) {
             toolBlocks[ev.index].jsonParts.push(ev.delta.partial_json)
           }
@@ -411,10 +426,20 @@ async function readAnthropicToolStream(res, signal, onTextDelta) {
     return { id: b.id, name: b.name, input }
   })
 
-  // _raw: content block array Anthropic needs back in the next user message
-  const _raw = []
-  if (fullText) _raw.push({ type: 'text', text: fullText })
-  toolCalls.forEach(tc => _raw.push({ type: 'tool_use', id: tc.id, name: tc.name, input: tc.input }))
+  // _raw: content block array Anthropic needs back in the next assistant message.
+  // Must include thinking blocks (if any) in their original index order.
+  const _raw = Object.entries(blocks)
+    .sort(([a], [b]) => Number(a) - Number(b))
+    .flatMap(([, block]) => {
+      if (block._toolIndex !== undefined) {
+        const tc = toolCalls.find(t => toolBlocks[block._toolIndex]?.id === t.id)
+        if (!tc) return []
+        return [{ type: 'tool_use', id: tc.id, name: tc.name, input: tc.input }]
+      }
+      if (block.type === 'thinking' && block.thinking) return [block]
+      if (block.type === 'text' && block.text) return [{ type: 'text', text: block.text }]
+      return []
+    })
 
   return { text: fullText, toolCalls, isDone: stopReason === 'end_turn' || toolCalls.length === 0, _raw }
 }
