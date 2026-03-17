@@ -2151,7 +2151,8 @@ kbd {
   .lk-source-chip { max-width: 110px; overflow: hidden; text-overflow: ellipsis; font-size: 10px; padding: 3px 8px; }
 
   /* Source popover: bottom sheet instead of dropdown */
-  .lk-source-chip-wrap { position: static; }
+  .lk-source-chip-wrap,
+  .lk-source-chip-wrap--fusion-tab { position: static; transform: none; }
   .lk-source-popover {
     position: fixed;
     bottom: 0;

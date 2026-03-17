@@ -1537,13 +1537,11 @@ export default function Logik({ onClose, models, selectedModelId, onModelChange 
                   onClick={() => { setViewMode('code'); if (activeTab === 'activity') setActiveTab('code') }}
                   title="Code — see the generated files"
                 >Code</button>
-                {hasGithub && (
-                  <button
-                    className={`lk-view-toggle-btn lk-view-toggle-btn--fusion${hasBothRepos ? ' lk-view-toggle-btn--fusion-active' : ''}`}
-                    onClick={() => hasBothRepos ? setBuildMode(true) : setSourceOpen(v => !v)}
-                    title={hasBothRepos ? `Fusion — absorb ${repo2Owner}/${repo2Name} into target repo` : 'Fusion — attach a source repo to enable multi-repo fusion mode'}
-                  >⟳ Fusion</button>
-                )}
+                <button
+                  className={`lk-view-toggle-btn lk-view-toggle-btn--fusion${hasBothRepos ? ' lk-view-toggle-btn--fusion-active' : ''}`}
+                  onClick={() => hasBothRepos ? setBuildMode(true) : setSourceOpen(v => !v)}
+                  title={hasBothRepos ? `Fusion — absorb ${repo2Owner}/${repo2Name} into target repo` : 'Fusion — attach a source repo to enable multi-repo fusion mode'}
+                >⟳ Fusion</button>
               </div>
 
               {turnCount > 0 && (
@@ -1565,7 +1563,7 @@ export default function Logik({ onClose, models, selectedModelId, onModelChange 
             {(models || []).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
           </select>}
           {/* ── Fusion popover — anchored to the Fusion tab button ── */}
-          {hasGithub && !buildMode && sourceOpen && (
+          {!buildMode && sourceOpen && (
             <div className="lk-source-chip-wrap lk-source-chip-wrap--fusion-tab">
               <div className="lk-source-popover">
                 <div className="lk-source-popover-hd">
