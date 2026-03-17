@@ -15,7 +15,7 @@ import {
   getWorkflowRun,
 } from '../services/githubService'
 import { estimateCost, formatCost } from '../utils/tokenEstimator'
-import { shadowContext } from '../services/shadowContext'
+import { shadowContext, shadowContext2 } from '../services/shadowContext'
 import { isVaguePrompt, amplifyPrompt } from '../services/intentAmplifier'
 import { buildFilePlan } from '../services/planner'
 import { useConversation }   from '../core/hooks/useConversation'
@@ -41,12 +41,14 @@ import LogikDiffViewer   from './logik/LogikDiffViewer'
 import LogikTerminal     from './logik/LogikTerminal'
 import LogikToolsPane    from './logik/LogikToolsPane'
 import LogikSettings     from './logik/LogikSettings'
+import LogikFusionPanel  from './logik/LogikFusionPanel'
 import './Logik.css'
 
 // ─── Persistence ────────────────────────────────────────────────────────────
-const SETTINGS_KEY   = 'logik:settings'
-const HISTORY_KEY    = 'logik:history'
-const GHTOKEN_SS_KEY = 'logik:ghtoken'
+const SETTINGS_KEY    = 'logik:settings'
+const HISTORY_KEY     = 'logik:history'
+const GHTOKEN_SS_KEY  = 'logik:ghtoken'
+const GHTOKEN2_SS_KEY = 'logik:ghtoken2'
 
 function loadSettings() {
   try {
@@ -57,16 +59,20 @@ function loadSettings() {
       delete s.githubToken
       try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)) } catch {}
     }
-    try { s.githubToken = sessionStorage.getItem(GHTOKEN_SS_KEY) || '' } catch {}
+    try { s.githubToken  = sessionStorage.getItem(GHTOKEN_SS_KEY)  || '' } catch {}
+    try { s.repo2Token   = sessionStorage.getItem(GHTOKEN2_SS_KEY) || '' } catch {}
     return s
   } catch { return {} }
 }
 function saveSettings(s) {
   try {
-    const { githubToken, ...rest } = s
+    const { githubToken, repo2Token, ...rest } = s
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(rest))
     if (githubToken !== undefined) {
-      try { sessionStorage.setItem(GHTOKEN_SS_KEY, githubToken || '') } catch {}
+      try { sessionStorage.setItem(GHTOKEN_SS_KEY,  githubToken || '') } catch {}
+    }
+    if (repo2Token !== undefined) {
+      try { sessionStorage.setItem(GHTOKEN2_SS_KEY, repo2Token  || '') } catch {}
     }
   } catch {}
 }
@@ -158,6 +164,12 @@ export default function Logik({ onClose, models, selectedModelId, onModelChange 
   const [repoName,       setRepoName]       = useState(saved.repoName    || '')
   const [baseBranch,     setBaseBranch]     = useState(saved.baseBranch  || 'main')
   const [githubToken,    setGithubToken]    = useState(saved.githubToken || '')
+  // ── Source (secondary) repo — for Fusion mode ─────────────────────────
+  const [repo2Owner,  setRepo2Owner]  = useState(saved.repo2Owner  || '')
+  const [repo2Name,   setRepo2Name]   = useState(saved.repo2Name   || '')
+  const [repo2Branch, setRepo2Branch] = useState(saved.repo2Branch || 'main')
+  const [repo2Token,  setRepo2Token]  = useState(saved.repo2Token  || '')
+  const [shadowStatus2, setShadowStatus2] = useState(null)
   const [doCreateBranch, setDoCreateBranch] = useState(true)
   const [doCreatePR,     setDoCreatePR]     = useState(true)
   const [dryRun,         setDryRun]         = useState(false)
@@ -250,6 +262,7 @@ export default function Logik({ onClose, models, selectedModelId, onModelChange 
   const [copied,       setCopied]       = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [historyOpen,  setHistoryOpen]  = useState(false)
+  const [sourceOpen,   setSourceOpen]   = useState(false)
   const [history,      setHistory]      = useState(loadHistory)
   // ── Phase 4: ShadowContext ─────────────────────────────────────────────
   const [shadowStatus,  setShadowStatus]  = useState(null)   // null | string
@@ -267,7 +280,8 @@ export default function Logik({ onClose, models, selectedModelId, onModelChange 
 
   const abortRef = useRef(null)
   const language = detectLanguage(filePath, generatedCode)
-  const hasGithub = !!(githubToken && repoOwner && repoName)
+  const hasGithub    = !!(githubToken && repoOwner && repoName)
+  const hasBothRepos = !!(hasGithub && repo2Owner && repo2Name)
 
   // ── Sync model from parent ──────────────────────────────────────────────
   useEffect(() => {
@@ -277,13 +291,16 @@ export default function Logik({ onClose, models, selectedModelId, onModelChange 
   // ── Persist settings ───────────────────────────────────────────────────
   useEffect(() => {
     saveSettings({
-      repoOwner, repoName, baseBranch, githubToken, theme,
+      repoOwner, repoName, baseBranch, githubToken,
+      repo2Owner, repo2Name, repo2Branch, repo2Token,
+      theme,
       ftBrightness: fineTune.brightness, ftContrast: fineTune.contrast,
       ftSaturation: fineTune.saturation, ftHighlight: fineTune.highlight,
       ftShadow: fineTune.shadow,
       creativity, enableThinking,
     })
-  }, [repoOwner, repoName, baseBranch, githubToken, theme, fineTune, creativity, enableThinking])
+  }, [repoOwner, repoName, baseBranch, githubToken, repo2Owner, repo2Name, repo2Branch, repo2Token,
+      theme, fineTune, creativity, enableThinking])
 
   // ── Phase 4: start ShadowContext indexing when credentials are ready ────
   useEffect(() => {
@@ -292,6 +309,15 @@ export default function Logik({ onClose, models, selectedModelId, onModelChange 
       setShadowStatus(shadowContext.statusSummary())
     })
   }, [hasGithub, githubToken, repoOwner, repoName, baseBranch])
+
+  // ── Source repo indexing (Fusion mode) ────────────────────────────────
+  useEffect(() => {
+    if (!repo2Owner || !repo2Name) return
+    const token = repo2Token || githubToken
+    shadowContext2.startIndexing(token, repo2Owner, repo2Name, repo2Branch || 'main', () => {
+      setShadowStatus2(shadowContext2.statusSummary())
+    })
+  }, [repo2Owner, repo2Name, repo2Branch, repo2Token, githubToken])
 
   // ── State watchdog — detects and resets stuck busy flags ───────────────
   // If isGenerating has been true for >5 minutes (e.g. due to unhandled reject),
@@ -320,11 +346,15 @@ export default function Logik({ onClose, models, selectedModelId, onModelChange 
   const { bridgeAvailable, callExecBridge, callExecBridgeStream } = useExecBridge()
 
   // ── Agent session — managed by hook ────────────────────────────────────
-  const activeModel  = models?.find(m => m.id === activeModelId)
-  const githubConfig = { token: githubToken, owner: repoOwner, repo: repoName, branch: baseBranch }
+  const activeModel      = models?.find(m => m.id === activeModelId)
+  const githubConfig     = { token: githubToken, owner: repoOwner, repo: repoName, branch: baseBranch }
+  const sourceRepoConfig = hasBothRepos
+    ? { token: repo2Token || githubToken, owner: repo2Owner, repo: repo2Name, branch: repo2Branch || 'main' }
+    : null
   const agentSession = useAgentSession({
     modelConfig:    activeModel,
     githubConfig,
+    sourceRepoConfig,
     bridgeAvailable,
     logActivity,
     updateActivity,
@@ -1401,6 +1431,7 @@ export default function Logik({ onClose, models, selectedModelId, onModelChange 
     { id: 'run',    label: '▶ Run', hidden: !generatedCode },
     { id: 'terminal', label: 'Terminal ●', hidden: !bridgeAvailable },
     { id: 'tools',    label: 'Tools ●',    hidden: !bridgeAvailable },
+    { id: 'fusion',   label: '⟳ Fusion',  hidden: !hasBothRepos },
   ]
   const visibleTabs = tabs.filter(t => !t.hidden)
   // In chat mode always show the activity feed regardless of which tab is stored.
@@ -1493,6 +1524,71 @@ export default function Logik({ onClose, models, selectedModelId, onModelChange 
             <option value="">Model…</option>
             {(models || []).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
           </select>
+          {/* ── Source repo chip ── */}
+          {hasGithub && (
+            <div className="lk-source-chip-wrap">
+              <button
+                className={`lk-source-chip${hasBothRepos ? ' lk-source-chip--connected' : ''}${sourceOpen ? ' lk-source-chip--open' : ''}`}
+                onClick={() => setSourceOpen(v => !v)}
+                title={hasBothRepos ? `Source: ${repo2Owner}/${repo2Name}` : 'Connect a source repo for Fusion mode'}
+              >
+                {hasBothRepos
+                  ? <><span className="lk-source-chip-dot" />⟳ {repo2Owner}/{repo2Name}</>
+                  : <>⟳ + Source Repo</>}
+              </button>
+              {sourceOpen && (
+                <div className="lk-source-popover">
+                  <div className="lk-source-popover-hd">
+                    {hasBothRepos ? 'Source Repository' : 'Connect Source Repository'}
+                  </div>
+                  <label className="lk-label">Quick Setup</label>
+                  <input
+                    className="lk-input"
+                    placeholder="github.com/owner/repo"
+                    onChange={e => {
+                      const p = (() => {
+                        try {
+                          const u = e.target.value.trim().replace(/^https?:\/\//, '')
+                          const parts = u.replace('github.com/', '').split('/')
+                          if (parts.length >= 2) return { owner: parts[0], repo: parts[1].replace(/\.git$/, '') }
+                        } catch {}
+                        return null
+                      })()
+                      if (p) { setRepo2Owner(p.owner); setRepo2Name(p.repo) }
+                    }}
+                  />
+                  <div className="lk-source-popover-row">
+                    <input className="lk-input" placeholder="owner" value={repo2Owner}
+                      onChange={e => setRepo2Owner(e.target.value.trim())} />
+                    <span className="lk-source-popover-sep">/</span>
+                    <input className="lk-input" placeholder="repo" value={repo2Name}
+                      onChange={e => setRepo2Name(e.target.value.trim())} />
+                  </div>
+                  <input className="lk-input" placeholder="branch (default: main)" value={repo2Branch}
+                    onChange={e => setRepo2Branch(e.target.value.trim())} />
+                  <input className="lk-input" type="password" placeholder="Token (optional — reuses primary)"
+                    value={repo2Token} onChange={e => setRepo2Token(e.target.value)} autoComplete="off" />
+                  <div className="lk-source-popover-actions">
+                    {hasBothRepos && (
+                      <button className="lk-btn lk-btn--small" onClick={() => {
+                        setRepo2Owner(''); setRepo2Name(''); setRepo2Branch('main'); setRepo2Token('')
+                        setSourceOpen(false)
+                      }}>Disconnect</button>
+                    )}
+                    <button className="lk-btn lk-btn--primary lk-btn--small"
+                      disabled={!repo2Owner || !repo2Name}
+                      onClick={() => setSourceOpen(false)}>
+                      {hasBothRepos ? 'Update' : 'Connect'}
+                    </button>
+                  </div>
+                  {hasBothRepos && shadowStatus2 && (
+                    <div className="lk-source-popover-status">{shadowStatus2}</div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           <button
             className="lk-btn lk-btn--small"
             onClick={() => downloadLogikZip()}
@@ -1512,6 +1608,12 @@ export default function Logik({ onClose, models, selectedModelId, onModelChange 
             baseBranch={baseBranch}       setBaseBranch={setBaseBranch}
             hasGithub={hasGithub}
             onReindex={handleReindex}
+            repo2Token={repo2Token}       setRepo2Token={setRepo2Token}
+            repo2Owner={repo2Owner}       setRepo2Owner={setRepo2Owner}
+            repo2Name={repo2Name}         setRepo2Name={setRepo2Name}
+            repo2Branch={repo2Branch}     setRepo2Branch={setRepo2Branch}
+            hasBothRepos={hasBothRepos}
+            onReindex2={() => shadowContext2.reindex()}
             generateTests={generateTests}     setGenerateTests={setGenerateTests}
             creativity={creativity}           setCreativity={setCreativity}
             enableThinking={enableThinking}   setEnableThinking={setEnableThinking}
@@ -1811,6 +1913,16 @@ export default function Logik({ onClose, models, selectedModelId, onModelChange 
               bridgeAvailable={bridgeAvailable}
               callExecBridge={callExecBridge}
               onSetActiveTab={setActiveTab}
+            />
+          )}
+
+          {effectiveActiveTab === 'fusion' && hasBothRepos && (
+            <LogikFusionPanel
+              sourceRepo={{ owner: repo2Owner, repo: repo2Name, branch: repo2Branch }}
+              targetRepo={{ owner: repoOwner,  repo: repoName,  branch: baseBranch  }}
+              onRunRitual={prompt => { agentSession.run(prompt); setActiveTab('activity'); setViewMode('chat') }}
+              isRunning={agentSession.isAgentRunning}
+              shadowStatus2={shadowStatus2}
             />
           )}
 
