@@ -151,14 +151,23 @@ export async function testModelConnection(modelConfig) {
     const res = await fetch(url, options)
     const ms  = Date.now() - t0
     if (!res.ok) {
-      const body = await res.text()
+      const text = await res.text()
       let msg = `HTTP ${res.status}`
-      try { msg = JSON.parse(body)?.error?.message || msg } catch {}
+      try {
+        const parsed = JSON.parse(text)
+        msg = parsed?.error?.message || parsed?.message || msg
+      } catch {}
       return { ok: false, error: msg }
     }
     return { ok: true, model: modelId, ms }
   } catch (e) {
-    return { ok: false, error: e.message }
+    const isCors = e.message === 'Failed to fetch' || e.name === 'TypeError'
+    return {
+      ok: false,
+      error: isCors
+        ? 'Network error — likely a CORS block. Restart the dev server so the new proxy takes effect.'
+        : e.message,
+    }
   }
 }
 
@@ -172,6 +181,18 @@ function isAnthropicUrl(baseUrl) {
 // The proxy holds all API keys as Firebase Secrets — the browser key field
 // can be left blank and the model will still work.
 const PROXY_URL = import.meta.env?.VITE_AI_PROXY_URL || null
+
+// In dev mode Vite proxies these paths through Node to avoid browser CORS blocks.
+// In production the app must be served with a reverse proxy or use PROXY_URL.
+const IS_DEV = import.meta.env?.DEV ?? false
+function devProxyUrl(baseUrl) {
+  if (!IS_DEV) return baseUrl
+  if (baseUrl.includes('moonshot.cn'))         return '/api/proxy/moonshot'
+  if (baseUrl.includes('api.anthropic.com'))   return '/api/proxy/anthropic'
+  if (baseUrl.includes('api.openai.com'))      return '/api/proxy/openai'
+  if (baseUrl.includes('googleapis.com'))      return '/api/proxy/gemini'
+  return baseUrl
+}
 
 import { THINKING_BUDGET_TOKENS } from '../config/constants.js'
 
@@ -281,7 +302,7 @@ function buildAnthropicRequest(baseUrl, apiKey, modelId, body, modelConfig = {})
     headers['anthropic-beta'] = 'interleaved-thinking-2025-05-14'
   }
   return {
-    url: `${baseUrl}/messages`,
+    url: `${devProxyUrl(baseUrl)}/messages`,
     options: {
       method: 'POST',
       headers,
@@ -309,7 +330,7 @@ function buildOpenAIRequest(baseUrl, apiKey, modelId, body, modelConfig = {}) {
     }
   }
   return {
-    url: `${baseUrl}/chat/completions`,
+    url: `${devProxyUrl(baseUrl)}/chat/completions`,
     options: {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },

@@ -100,4 +100,30 @@ function execBridgePlugin() {
 
 export default defineConfig({
   plugins: [react(), execBridgePlugin()],
+
+  server: {
+    proxy: {
+      // Proxy external AI API calls through Vite's Node server to avoid CORS
+      '/api/proxy/moonshot': {
+        target: 'https://api.moonshot.cn',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/api\/proxy\/moonshot/, '/v1'),
+      },
+      '/api/proxy/anthropic': {
+        target: 'https://api.anthropic.com',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/api\/proxy\/anthropic/, '/v1'),
+      },
+      '/api/proxy/openai': {
+        target: 'https://api.openai.com',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/api\/proxy\/openai/, '/v1'),
+      },
+      '/api/proxy/gemini': {
+        target: 'https://generativelanguage.googleapis.com',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/api\/proxy\/gemini/, '/v1beta'),
+      },
+    },
+  },
 })
