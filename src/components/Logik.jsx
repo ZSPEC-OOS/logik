@@ -1873,6 +1873,11 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
               onRunRitual={prompt => { agentSession.run(prompt); setActiveTab('activity'); setViewMode('chat') }}
               isRunning={agentSession.isAgentRunning}
               shadowStatus2={shadowStatus2}
+              repo2Owner={repo2Owner}   setRepo2Owner={setRepo2Owner}
+              repo2Name={repo2Name}     setRepo2Name={setRepo2Name}
+              repo2Branch={repo2Branch} setRepo2Branch={setRepo2Branch}
+              repo2Token={repo2Token}   setRepo2Token={setRepo2Token}
+              hasBothRepos={hasBothRepos}
             />
           )}
 
