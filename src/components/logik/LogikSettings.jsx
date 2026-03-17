@@ -1,5 +1,5 @@
 import { memo, useState, useEffect } from 'react'
-import { clearApiKeys, saveModels, MODEL_PRESETS, testModelConnection } from '../../services/aiService.js'
+import { clearApiKeys, saveModels, MODEL_PRESETS, testModelConnection, loadSearchKey, saveSearchKey } from '../../services/aiService.js'
 import { getRepo } from '../../services/githubService.js'
 import { parseGitHubUrl } from '../../utils/codeUtils.js'
 import {
@@ -54,6 +54,9 @@ const LogikSettings = memo(function LogikSettings({
 
   // AI models (API keys)
   models, setModels,
+
+  // Web search
+  webSearchApiKey, setWebSearchApiKey,
 }) {
   const GHTOKEN_SS_KEY = 'logik:ghtoken'
 
@@ -208,6 +211,37 @@ const LogikSettings = memo(function LogikSettings({
             <button className="lk-btn lk-btn--small lk-settings-add-btn" onClick={() => setAddModelOpen(true)}>
               + Add Model
             </button>
+          )}
+        </div>
+      </div>
+
+      {/* ── Web Search ────────────────────────────────────────────────────── */}
+      <div className="lk-settings-section">
+        <div className="lk-settings-section-hd">
+          <span className="lk-settings-section-icon">🔍</span>
+          Web Search
+        </div>
+        <div className="lk-settings-section-body">
+          <span className="lk-hint">
+            Enables the <code>web_search</code> agent tool. Get a free key at{' '}
+            <a href="https://app.tavily.com" target="_blank" rel="noreferrer">app.tavily.com</a>
+            {' '}(1,000 free searches/month). Stored in sessionStorage — clears on tab close.
+          </span>
+          <input
+            className="lk-input"
+            type="password"
+            placeholder="Tavily API key (tvly-…)"
+            value={webSearchApiKey || ''}
+            onChange={e => {
+              setWebSearchApiKey(e.target.value)
+              saveSearchKey(e.target.value)
+            }}
+            autoComplete="off"
+          />
+          {webSearchApiKey && (
+            <span className="lk-settings-test-result lk-settings-test-result--ok">
+              ● Web search active
+            </span>
           )}
         </div>
       </div>

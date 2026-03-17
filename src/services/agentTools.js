@@ -126,46 +126,85 @@ export const AGENT_TOOLS = [
       required: ['path'],
     },
   },
+  {
+    name: 'web_search',
+    description: 'Search the web for up-to-date information, documentation, error messages, or research. Returns a summary and top results with URLs. Requires a Tavily API key in Settings → Web Search.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query:          { type: 'string', description: 'Search query'                                                    },
+        max_results:    { type: 'number', description: 'Max results to return (default 5, max 10)'                       },
+        include_domains:{ type: 'array',  items: { type: 'string' }, description: 'Restrict results to these domains'    },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'todo',
+    description: 'Track your own tasks during complex multi-step operations. Call with action="add" to register a pending task, "in_progress" when starting it, and "done" when finished. Helps you stay organised and keeps the user informed of progress.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['add', 'in_progress', 'done'], description: 'Task lifecycle action'  },
+        task:   { type: 'string', description: 'Short description of the task (one line)'                     },
+      },
+      required: ['action', 'task'],
+    },
+  },
 ]
 
-// System prompt injected at the start of every agent session
-export function buildAgentSystemPrompt(conventions, logikMd, repoOwner, repoName, bridgeAvailable, sourceRepoConfig = null) {
+// System prompt injected at the start of every agent session.
+// planMode=true  → read-only analysis; no file writes.
+// webSearch=true → web_search tool is active (Tavily key configured).
+export function buildAgentSystemPrompt(conventions, logikMd, repoOwner, repoName, bridgeAvailable, sourceRepoConfig = null, planMode = false, webSearch = false) {
   const hasSrc = !!(sourceRepoConfig?.owner && sourceRepoConfig?.repo)
   const srcLabel = hasSrc ? `${sourceRepoConfig.owner}/${sourceRepoConfig.repo}` : null
 
   const lines = [
-    hasSrc
-      ? `You are LOGIK Agent, an autonomous AI coding assistant operating in FUSION MODE.`
-      : `You are LOGIK Agent, an autonomous AI coding assistant operating on the GitHub repository ${repoOwner}/${repoName}.`,
+    planMode
+      ? `You are LOGIK Agent operating in READ-ONLY PLAN MODE on the GitHub repository ${repoOwner}/${repoName}.`
+      : hasSrc
+        ? `You are LOGIK Agent, an autonomous AI coding assistant operating in FUSION MODE.`
+        : `You are LOGIK Agent, an autonomous AI coding assistant operating on the GitHub repository ${repoOwner}/${repoName}.`,
     ``,
-    hasSrc
-      ? `TARGET repository (read + write): ${repoOwner}/${repoName}`
+    planMode
+      ? `READ-ONLY MODE: You may only read files, list directories, and search the codebase. Do NOT write, edit, or delete any files. Your job is to analyse the code and produce a detailed plan or explanation.`
       : null,
-    hasSrc
-      ? `SOURCE repository (read-only):    ${srcLabel} (branch: ${sourceRepoConfig.branch || 'main'})`
-      : null,
-    hasSrc ? `` : null,
-    `You have access to tools that let you read files, write files, edit files, search the codebase, run shell commands, and create pull requests.`,
-    hasSrc ? `You also have read_source_file and list_source_directory to read from the SOURCE repo.` : null,
+    planMode ? `` : null,
+    !planMode && hasSrc ? `TARGET repository (read + write): ${repoOwner}/${repoName}` : null,
+    !planMode && hasSrc ? `SOURCE repository (read-only):    ${srcLabel} (branch: ${sourceRepoConfig?.branch || 'main'})` : null,
+    !planMode && hasSrc ? `` : null,
+    planMode
+      ? `You have access to read_file, list_directory, and search_files to explore the codebase.`
+      : `You have access to tools that let you read files, write files, edit files, search the codebase, run shell commands, and create pull requests.`,
+    !planMode && hasSrc ? `You also have read_source_file and list_source_directory to read from the SOURCE repo.` : null,
+    webSearch ? `You have web_search to look up documentation, errors, or research.` : null,
+    `Use the todo tool to track tasks when working on complex multi-step operations.`,
     `Work autonomously — do not ask the user for clarification. Make smart decisions and get the task done.`,
     ``,
     `WORKFLOW:`,
-    `1. Understand the task.`,
-    `2. Explore the codebase using list_directory and search_files as needed.`,
-    hasSrc ? `2b. Explore the SOURCE repo using list_source_directory and read_source_file.` : null,
-    `3. Read relevant files before modifying them.`,
-    `4. Make changes using edit_file (for small changes) or write_file (for new files or rewrites).`,
-    `5. Run tests or lint if available to verify correctness.`,
-    `6. When all changes are complete, summarise what you did.`,
+    `1. Use todo(add) to list the steps you plan to take for complex tasks.`,
+    planMode
+      ? `2. Explore the codebase using list_directory, read_file, and search_files.`
+      : `2. Explore the codebase using list_directory and search_files as needed.`,
+    !planMode && hasSrc ? `2b. Explore the SOURCE repo using list_source_directory and read_source_file.` : null,
+    planMode
+      ? `3. Analyse the relevant code and produce a clear, actionable plan or explanation.`
+      : `3. Read relevant files before modifying them.`,
+    !planMode ? `4. Make changes using edit_file (for small changes) or write_file (for new files or rewrites).` : null,
+    !planMode ? `5. Run tests or lint if available to verify correctness.` : null,
+    `${planMode ? '4' : '6'}. Mark tasks done with todo(done) and summarise what you found${planMode ? '' : ' / changed'}.`,
     ``,
     `RULES:`,
-    `- Always read a file before editing it.`,
-    `- Prefer edit_file over write_file for modifications to existing files.`,
-    `- Never truncate code — write complete, production-ready implementations.`,
+    !planMode ? `- Always read a file before editing it.` : null,
+    !planMode ? `- Prefer edit_file over write_file for modifications to existing files.` : null,
+    !planMode ? `- Never truncate code — write complete, production-ready implementations.` : null,
     `- Do not ask the user questions — proceed with best judgment.`,
-    hasSrc ? `- read_source_file and list_source_directory are READ-ONLY — never try to write to the source repo.` : null,
-    hasSrc ? `- All writes go to the TARGET repo (${repoOwner}/${repoName}) only.` : null,
-    !bridgeAvailable ? `- run_command is not available (exec bridge offline).` : `- run_command is available — use it to verify your work.`,
+    !planMode && hasSrc ? `- read_source_file and list_source_directory are READ-ONLY — never try to write to the source repo.` : null,
+    !planMode && hasSrc ? `- All writes go to the TARGET repo (${repoOwner}/${repoName}) only.` : null,
+    !planMode && !bridgeAvailable ? `- run_command is not available (exec bridge offline).` : null,
+    !planMode && bridgeAvailable  ? `- run_command is available — use it to verify your work.` : null,
+    planMode ? `- You are in READ-ONLY mode — do NOT call write_file, edit_file, delete_file, or create_pull_request.` : null,
   ].filter(l => l !== null)
 
   if (conventions && conventions.framework !== 'unknown') {

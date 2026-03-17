@@ -8,11 +8,20 @@ import { makeExecutor }  from '../../services/agentExecutor.js'
 import { AGENT_TOOLS, buildAgentSystemPrompt } from '../../services/agentTools.js'
 import { shadowContext } from '../../services/shadowContext.js'
 
+// Read-only tools — used when planMode is active
+const PLAN_MODE_TOOLS = new Set([
+  'read_file', 'list_directory', 'search_files',
+  'read_source_file', 'list_source_directory',
+  'web_search', 'todo',
+])
+
 export function useAgentSession({
   modelConfig,       // {apiKey, baseUrl, modelId, …}
   githubConfig,      // {token, owner, repo, branch}
   sourceRepoConfig,  // {token, owner, repo, branch} | null — secondary (read-only) repo
   bridgeAvailable,   // bool
+  webSearchApiKey,   // string | '' — Tavily API key (optional)
+  planMode,          // bool — read-only analysis mode
   logActivity,       // (type, msg, detail?) => id
   updateActivity,    // (id, updates) => void
   activityRef,       // ref to the activity entries array (for last-entry lookup)
@@ -45,16 +54,23 @@ export function useAgentSession({
     abortRef.current = ctrl
 
     const executor = makeExecutor({
-      token:       githubConfig.token,
-      owner:       githubConfig.owner,
-      repo:        githubConfig.repo,
-      branch:      githubConfig.branch,
+      token:           githubConfig.token,
+      owner:           githubConfig.owner,
+      repo:            githubConfig.repo,
+      branch:          githubConfig.branch,
       sourceRepoConfig,
+      webSearchApiKey: webSearchApiKey || '',
       onFileWrite: (path, action) => {
         setAgentFiles(prev => prev.includes(path) ? prev : [...prev, path])
         onFileWrite?.(path, action)
       },
     })
+
+    // In plan mode only include read-only tools so the model can't accidentally
+    // write files even if it tries to call a mutating tool.
+    const tools = planMode
+      ? AGENT_TOOLS.filter(t => PLAN_MODE_TOOLS.has(t.name))
+      : AGENT_TOOLS
 
     const systemPrompt = buildAgentSystemPrompt(
       shadowContext.getConventions(),
@@ -63,6 +79,8 @@ export function useAgentSession({
       githubConfig.repo  || 'unknown',
       bridgeAvailable,
       sourceRepoConfig,
+      planMode,
+      !!webSearchApiKey,
     )
 
     const startId = logActivity('agent', `⚡ Agent starting — "${task.slice(0, 60)}"`)
@@ -71,7 +89,7 @@ export function useAgentSession({
     try { await runAgentLoop({
       task,
       systemPrompt,
-      tools:       AGENT_TOOLS,
+      tools,
       executeTool: executor,
       modelConfig,
       signal:      ctrl.signal,
@@ -160,8 +178,8 @@ export function useAgentSession({
       setIsAgentRunning(false)
       onPromptClear?.()
     }
-  }, [modelConfig, githubConfig, sourceRepoConfig, bridgeAvailable, logActivity, updateActivity, activityRef,
-      onFileWrite, onSetActiveTab, onSetError, onPromptClear])
+  }, [modelConfig, githubConfig, sourceRepoConfig, bridgeAvailable, webSearchApiKey, planMode,
+      logActivity, updateActivity, activityRef, onFileWrite, onSetActiveTab, onSetError, onPromptClear])
 
   const abort = useCallback(() => {
     abortRef.current?.abort()

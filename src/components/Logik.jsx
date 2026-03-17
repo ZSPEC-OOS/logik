@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { runPromptWithRetry } from '../services/aiService'
+import { runPromptWithRetry, loadSearchKey } from '../services/aiService'
 import {
   getRepo,
   getBranch,
@@ -194,6 +194,10 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
   const [creativity,      setCreativity]      = useState(saved.creativity ?? 50)
   // enableThinking: Anthropic extended thinking (deeper reasoning, slower)
   const [enableThinking,  setEnableThinking]  = useState(saved.enableThinking ?? false)
+  // planMode: agent reads only — no file writes; useful for analysis and review
+  const [planMode,        setPlanMode]        = useState(false)
+  // webSearchApiKey: Tavily API key for agent web_search tool
+  const [webSearchApiKey, setWebSearchApiKey] = useState(() => loadSearchKey())
 
   // ── Multi-file plan ────────────────────────────────────────────────────
   // Each entry: {path, action, purpose, existingContent, _sha, code, testCode,
@@ -352,10 +356,12 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
     ? { token: repo2Token || githubToken, owner: repo2Owner, repo: repo2Name, branch: repo2Branch || 'main' }
     : null
   const agentSession = useAgentSession({
-    modelConfig:    activeModel,
+    modelConfig:     activeModel,
     githubConfig,
     sourceRepoConfig,
     bridgeAvailable,
+    webSearchApiKey,
+    planMode,
     logActivity,
     updateActivity,
     activityRef,
@@ -1548,6 +1554,7 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
             generateTests={generateTests}     setGenerateTests={setGenerateTests}
             creativity={creativity}           setCreativity={setCreativity}
             enableThinking={enableThinking}   setEnableThinking={setEnableThinking}
+            webSearchApiKey={webSearchApiKey} setWebSearchApiKey={setWebSearchApiKey}
             doCreateBranch={doCreateBranch}   setDoCreateBranch={setDoCreateBranch}
             doCreatePR={doCreatePR}           setDoCreatePR={setDoCreatePR}
             dryRun={dryRun}                   setDryRun={setDryRun}
@@ -1961,6 +1968,17 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
                     <button className="lk-btn lk-btn--run" onClick={handleRunProjectTests} disabled={isRunningPostPushTests}>
                       <span className="lk-btn-icon">⊛</span>
                       {isRunningPostPushTests ? 'Running…' : 'Run Tests'}
+                    </button>
+                  )}
+
+                  {/* Plan Mode toggle — read-only analysis, shown only when GitHub connected */}
+                  {hasGithub && (
+                    <button
+                      className={`lk-btn lk-btn--small${planMode ? ' lk-btn--active' : ''}`}
+                      onClick={() => setPlanMode(m => !m)}
+                      title={planMode ? 'Plan mode ON — agent reads only. Click to switch to Build mode.' : 'Plan mode OFF — agent can write files. Click to switch to Plan mode (read-only analysis).'}
+                    >
+                      {planMode ? '📋 Plan' : 'Plan'}
                     </button>
                   )}
 
