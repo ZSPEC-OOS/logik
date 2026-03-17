@@ -262,6 +262,7 @@ export default function Logik({ onClose, models, selectedModelId, onModelChange 
   const [copied,       setCopied]       = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [historyOpen,  setHistoryOpen]  = useState(false)
+  const [sourceOpen,   setSourceOpen]   = useState(false)
   const [history,      setHistory]      = useState(loadHistory)
   // ── Phase 4: ShadowContext ─────────────────────────────────────────────
   const [shadowStatus,  setShadowStatus]  = useState(null)   // null | string
@@ -1523,6 +1524,71 @@ export default function Logik({ onClose, models, selectedModelId, onModelChange 
             <option value="">Model…</option>
             {(models || []).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
           </select>
+          {/* ── Source repo chip ── */}
+          {hasGithub && (
+            <div className="lk-source-chip-wrap">
+              <button
+                className={`lk-source-chip${hasBothRepos ? ' lk-source-chip--connected' : ''}${sourceOpen ? ' lk-source-chip--open' : ''}`}
+                onClick={() => setSourceOpen(v => !v)}
+                title={hasBothRepos ? `Source: ${repo2Owner}/${repo2Name}` : 'Connect a source repo for Fusion mode'}
+              >
+                {hasBothRepos
+                  ? <><span className="lk-source-chip-dot" />⟳ {repo2Owner}/{repo2Name}</>
+                  : <>⟳ + Source Repo</>}
+              </button>
+              {sourceOpen && (
+                <div className="lk-source-popover">
+                  <div className="lk-source-popover-hd">
+                    {hasBothRepos ? 'Source Repository' : 'Connect Source Repository'}
+                  </div>
+                  <label className="lk-label">Quick Setup</label>
+                  <input
+                    className="lk-input"
+                    placeholder="github.com/owner/repo"
+                    onChange={e => {
+                      const p = (() => {
+                        try {
+                          const u = e.target.value.trim().replace(/^https?:\/\//, '')
+                          const parts = u.replace('github.com/', '').split('/')
+                          if (parts.length >= 2) return { owner: parts[0], repo: parts[1].replace(/\.git$/, '') }
+                        } catch {}
+                        return null
+                      })()
+                      if (p) { setRepo2Owner(p.owner); setRepo2Name(p.repo) }
+                    }}
+                  />
+                  <div className="lk-source-popover-row">
+                    <input className="lk-input" placeholder="owner" value={repo2Owner}
+                      onChange={e => setRepo2Owner(e.target.value.trim())} />
+                    <span className="lk-source-popover-sep">/</span>
+                    <input className="lk-input" placeholder="repo" value={repo2Name}
+                      onChange={e => setRepo2Name(e.target.value.trim())} />
+                  </div>
+                  <input className="lk-input" placeholder="branch (default: main)" value={repo2Branch}
+                    onChange={e => setRepo2Branch(e.target.value.trim())} />
+                  <input className="lk-input" type="password" placeholder="Token (optional — reuses primary)"
+                    value={repo2Token} onChange={e => setRepo2Token(e.target.value)} autoComplete="off" />
+                  <div className="lk-source-popover-actions">
+                    {hasBothRepos && (
+                      <button className="lk-btn lk-btn--small" onClick={() => {
+                        setRepo2Owner(''); setRepo2Name(''); setRepo2Branch('main'); setRepo2Token('')
+                        setSourceOpen(false)
+                      }}>Disconnect</button>
+                    )}
+                    <button className="lk-btn lk-btn--primary lk-btn--small"
+                      disabled={!repo2Owner || !repo2Name}
+                      onClick={() => setSourceOpen(false)}>
+                      {hasBothRepos ? 'Update' : 'Connect'}
+                    </button>
+                  </div>
+                  {hasBothRepos && shadowStatus2 && (
+                    <div className="lk-source-popover-status">{shadowStatus2}</div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           <button
             className="lk-btn lk-btn--small"
             onClick={() => downloadLogikZip()}

@@ -2655,6 +2655,94 @@ kbd {
   white-space: nowrap;
 }
 
+/* ── Source Repo Chip (topbar) ───────────────────────────────────────────── */
+.lk-source-chip-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+.lk-source-chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  border: 1px dashed var(--lk-border);
+  background: transparent;
+  color: var(--lk-muted);
+  font-size: 11px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  white-space: nowrap;
+}
+.lk-source-chip:hover,
+.lk-source-chip--open {
+  border-color: var(--lk-accent);
+  color: var(--lk-accent);
+  background: color-mix(in srgb, var(--lk-accent) 6%, transparent);
+  border-style: solid;
+}
+.lk-source-chip--connected {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--lk-accent) 50%, transparent);
+  color: var(--lk-fg);
+  background: color-mix(in srgb, var(--lk-accent) 8%, var(--lk-surface));
+}
+.lk-source-chip-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--lk-accent);
+  box-shadow: 0 0 5px var(--lk-accent);
+  flex-shrink: 0;
+}
+.lk-source-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 280px;
+  background: var(--lk-bg);
+  border: 1px solid var(--lk-border);
+  border-radius: 10px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  z-index: 200;
+}
+.lk-source-popover-hd {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--lk-accent);
+  margin-bottom: 2px;
+}
+.lk-source-popover-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.lk-source-popover-sep {
+  color: var(--lk-muted);
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.lk-source-popover-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  margin-top: 2px;
+}
+.lk-source-popover-status {
+  font-size: 10px;
+  color: var(--lk-muted);
+  text-align: center;
+  padding-top: 2px;
+}
+
 /* ── Fusion Panel ────────────────────────────────────────────────────────── */
 .lk-fusion-panel {
   display: flex;
