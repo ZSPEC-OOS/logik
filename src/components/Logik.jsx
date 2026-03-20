@@ -1443,6 +1443,7 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
       e.preventDefault()
       if (!isGenerating && !isPushing && !agentSession.isAgentRunning) {
         if (generatedCode && refinementPrompt.trim()) handleRefine()
+        else if (hasGithub) agentSession.run(prompt)
         else handleGenerate()
       }
     }
@@ -1951,7 +1952,7 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
             value={prompt}
             onChange={e => setPrompt(e.target.value)}
             onKeyDown={handleKeyDown}
-            disabled={isGenerating}
+            disabled={isGenerating || agentSession.isAgentRunning}
           />
 
           {/* Actions row */}
