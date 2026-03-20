@@ -325,7 +325,13 @@ async function readSSEStream(res, onChunk, extractDelta, signal) {
       reader.cancel()
       break
     }
-    const { done, value } = await reader.read()
+    let done, value
+    try {
+      ;({ done, value } = await readChunkWithTimeout(reader))
+    } catch (err) {
+      reader.cancel()
+      throw err
+    }
     if (done) break
     buffer += decoder.decode(value, { stream: true })
     const lines = buffer.split('\n')

@@ -61,9 +61,9 @@ export function useExecBridge() {
           if (!line.startsWith('data: ')) continue
           try {
             const { type, data } = JSON.parse(line.slice(6))
-            if (type === 'stdout' || type === 'stderr') { output += data; onChunk?.(data, type) }
-            else if (type === 'done')  exitCode = data
-            else if (type === 'error') { output += data; onChunk?.(data, 'stderr') }
+            if (type === 'stdout' || type === 'stderr') { output += (data ?? ''); onChunk?.(data ?? '', type) }
+            else if (type === 'done')  exitCode = data ?? 0
+            else if (type === 'error') { output += (data ?? ''); onChunk?.(data ?? '', 'stderr') }
           } catch {}
         }
       }

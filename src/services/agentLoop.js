@@ -172,7 +172,10 @@ export async function runAgentLoop({
   const anthropicSystemField = isAnthropic ? systemPrompt : undefined
 
   for (let turn = 1; turn <= AGENT_MAX_TURNS; turn++) {
-    if (signal?.aborted) break
+    if (signal?.aborted) {
+      onEvent({ type: 'done', text: 'Agent stopped.', filesChanged })
+      return
+    }
     onEvent({ type: 'turn', turn })
 
     // ── Call the model ────────────────────────────────────────────────────
@@ -187,7 +190,10 @@ export async function runAgentLoop({
         (delta) => onEvent({ type: 'text_delta', delta }),
       )
     } catch (err) {
-      if (err.name === 'AbortError') return
+      if (err.name === 'AbortError') {
+        onEvent({ type: 'done', text: 'Agent stopped.', filesChanged })
+        return
+      }
       onEvent({ type: 'error', message: err.message })
       return
     }
@@ -208,7 +214,10 @@ export async function runAgentLoop({
 
     // ── Execute tools in parallel ─────────────────────────────────────────
     // Emit tool_start for all tools immediately, then run concurrently.
-    if (signal?.aborted) return
+    if (signal?.aborted) {
+      onEvent({ type: 'done', text: 'Agent stopped.', filesChanged })
+      return
+    }
     response.toolCalls.forEach(tc => onEvent({ type: 'tool_start', name: tc.name, input: tc.input }))
 
     const settled = await Promise.allSettled(
