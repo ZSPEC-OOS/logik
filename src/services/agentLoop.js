@@ -1,4 +1,4 @@
-// ── agentLoop — the core observe → decide → act cycle ────────────────────────
+// ââ agentLoop â the core observe â decide â act cycle ââââââââââââââââââââââââ
 //
 // Drives one full agent session:
 //   1. Sends the task + tool schemas to the model
@@ -8,17 +8,17 @@
 //
 // Events emitted via onEvent(event):
 //   { type: 'turn',       turn: number }
-//   { type: 'text_delta', delta: string }            — streaming token
-//   { type: 'tool_start', name, input }              — about to execute
-//   { type: 'tool_done',  name, result, error? }     — result received
-//   { type: 'file_write', path, action }             — file was changed
-//   { type: 'done',       text, filesChanged: [] }   — session complete
-//   { type: 'error',      message }                  — fatal error
+//   { type: 'text_delta', delta: string }            â streaming token
+//   { type: 'tool_start', name, input }              â about to execute
+//   { type: 'tool_done',  name, result, error? }     â result received
+//   { type: 'file_write', path, action }             â file was changed
+//   { type: 'done',       text, filesChanged: [] }   â session complete
+//   { type: 'error',      message }                  â fatal error
 
 import { callWithToolsStreaming } from './aiService.js'
 import { AGENT_MAX_TURNS, AGENT_KEEP_TURNS } from '../config/constants.js'
 
-// ── Session diary — Claude Code /compact pattern ──────────────────────────────
+// ââ Session diary â Claude Code /compact pattern ââââââââââââââââââââââââââââââ
 // Accumulates a lightweight log of what has happened in the session.
 // When context pruning would silently drop turns, the diary is injected instead
 // as a compact digest so the model retains awareness of prior progress.
@@ -40,7 +40,7 @@ function makeSessionDiary() {
     },
     buildDigest(droppedTurns) {
       const lines = [
-        `[SESSION DIGEST — ${droppedTurns} earlier turn${droppedTurns !== 1 ? 's' : ''} compacted to free context space]`,
+        `[SESSION DIGEST â ${droppedTurns} earlier turn${droppedTurns !== 1 ? 's' : ''} compacted to free context space]`,
       ]
       if (filesRead.size > 0)
         lines.push(`Files read: ${[...filesRead].slice(0, 20).join(', ')}`)
@@ -50,16 +50,16 @@ function makeSessionDiary() {
       }
       if (textSnippets.length > 0) {
         lines.push('Key progress notes:')
-        textSnippets.slice(-6).forEach(s => lines.push(`  • ${s}`))
+        textSnippets.slice(-6).forEach(s => lines.push(`  â¢ ${s}`))
       }
       return lines.join('\n')
     },
   }
 }
 
-// ── Helpers to build the next conversation turn ───────────────────────────────
+// ââ Helpers to build the next conversation turn âââââââââââââââââââââââââââââââ
 
-// Aider-style per-turn reminder — injected into the conversation whenever an
+// Aider-style per-turn reminder â injected into the conversation whenever an
 // edit_file call failed, keeping the exact-match rule continuously in scope.
 const EDIT_FAILURE_REMINDER =
   '[REMINDER] edit_file requires exact whitespace in old_str. ' +
@@ -70,7 +70,7 @@ const EDIT_FAILURE_REMINDER =
 // OpenAI expects each result as a message with role 'tool'.
 // We detect which format to use from the provider field set by callWithTools.
 function buildToolResultMessages(toolCalls, results, isAnthropic, rawAssistantContent) {
-  // Detect whether any edit_file calls failed — if so, append a reminder
+  // Detect whether any edit_file calls failed â if so, append a reminder
   const hadEditFailure = toolCalls.some((tc, i) =>
     tc.name === 'edit_file' && String(results[i] ?? '').startsWith('edit_file failed')
   )
@@ -92,7 +92,7 @@ function buildToolResultMessages(toolCalls, results, isAnthropic, rawAssistantCo
     ]
   }
 
-  // OpenAI / Kimi — use rawAssistantContent directly to preserve any extra fields
+  // OpenAI / Kimi â use rawAssistantContent directly to preserve any extra fields
   // (e.g. reasoning_content required by Kimi K2.5 thinking mode in multi-turn history)
   return [
     rawAssistantContent,
@@ -116,7 +116,7 @@ function pruneMessages(messages, diary = null) {
   const keep = AGENT_KEEP_TURNS * 2   // each turn = 1 assistant + 1 user
   if (tail.length <= keep) return messages
 
-  // Turns are about to be dropped — inject a digest if we have one
+  // Turns are about to be dropped â inject a digest if we have one
   const droppedCount = Math.floor((tail.length - keep) / 2)
   const trimmed = tail.slice(-keep)
 
@@ -127,7 +127,7 @@ function pruneMessages(messages, diary = null) {
   return [...head, ...trimmed]
 }
 
-// ── Loop detection ────────────────────────────────────────────────────────────
+// ââ Loop detection ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 // If the agent calls the exact same set of tools with the same inputs 3 turns
 // in a row it has likely entered an infinite loop.  We inject a recovery note
 // into the conversation so the model tries a different approach.
@@ -140,7 +140,7 @@ function toolSignature(toolCalls) {
     .join('|')
 }
 
-// ── Main entry point ──────────────────────────────────────────────────────────
+// ââ Main entry point ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 export async function runAgentLoop({
   task,
   systemPrompt,
@@ -150,7 +150,7 @@ export async function runAgentLoop({
   onEvent,
   signal,
 }) {
-  // Detect once — avoids repeated URL-sniffing in every turn.
+  // Detect once â avoids repeated URL-sniffing in every turn.
   // Supports proxy setups by checking the provider field if present, then URL.
   const isAnthropic = modelConfig.provider === 'anthropic' ||
     (!modelConfig.provider && modelConfig.baseUrl?.includes('api.anthropic.com'))
@@ -159,7 +159,7 @@ export async function runAgentLoop({
   const recentSigs   = []   // rolling window of tool-call signatures for loop detection
   const diary        = makeSessionDiary()   // Claude Code-style session digest
 
-  // Initial message — system prompt is injected as first user message
+  // Initial message â system prompt is injected as first user message
   // (both Anthropic and OpenAI accept a system field or a leading user message)
   let messages = [
     ...(isAnthropic
@@ -178,7 +178,7 @@ export async function runAgentLoop({
     }
     onEvent({ type: 'turn', turn })
 
-    // ── Call the model ────────────────────────────────────────────────────
+    // ââ Call the model ââââââââââââââââââââââââââââââââââââââââââââââââââââ
     let response
     try {
       response = await callWithToolsStreaming(
@@ -198,30 +198,37 @@ export async function runAgentLoop({
       return
     }
 
-    // ── Emit token usage (Claude Code-style ↑in ↓out accounting) ─────────
+    // ââ Emit token usage (Claude Code-style âin âout accounting) âââââââââ
     if (response.usage?.input || response.usage?.output) {
       onEvent({ type: 'usage', inputTokens: response.usage.input, outputTokens: response.usage.output })
     }
 
-    // ── Record model text in diary for compaction ──────────────────────
+    // ââ Record model text in diary for compaction ââââââââââââââââââââââ
     if (response.text) diary.onModelText(response.text)
 
-    // ── Model is done ─────────────────────────────────────────────────────
+    // ââ Model is done âââââââââââââââââââââââââââââââââââââââââââââââââââââ
     if (response.isDone || response.toolCalls.length === 0) {
       onEvent({ type: 'done', text: response.text, filesChanged })
       return
     }
 
-    // ── Execute tools in parallel ─────────────────────────────────────────
+    // ââ Execute tools in parallel âââââââââââââââââââââââââââââââââââââââââ
     // Emit tool_start for all tools immediately, then run concurrently.
+    // Each tool gets a unique ID so UI can match start/done events correctly.
     if (signal?.aborted) {
       onEvent({ type: 'done', text: 'Agent stopped.', filesChanged })
       return
     }
-    response.toolCalls.forEach(tc => onEvent({ type: 'tool_start', name: tc.name, input: tc.input }))
+    const toolCallIds = new Map()
+    response.toolCalls.forEach(tc => {
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
+      toolCallIds.set(tc, id)
+      onEvent({ type: 'tool_start', id, name: tc.name, input: tc.input })
+    })
 
     const settled = await Promise.allSettled(
       response.toolCalls.map(async (tc) => {
+        const id = toolCallIds.get(tc)
         try {
           const result = await executeTool(tc.name, tc.input)
           if (tc.name === 'write_file' || tc.name === 'edit_file' || tc.name === 'delete_file' || tc.name === 'revert_file') {
@@ -234,34 +241,34 @@ export async function runAgentLoop({
             const paths = tc.name === 'read_many_files' ? (tc.input.paths || []) : [tc.input.path]
             paths.forEach(p => diary.onFileRead(p))
           }
-          onEvent({ type: 'tool_done', name: tc.name, result, error: null })
+          onEvent({ type: 'tool_done', id, name: tc.name, result, error: null })
           return result
         } catch (err) {
-          onEvent({ type: 'tool_done', name: tc.name, result: `ERROR: ${err.message}`, error: err.message })
+          onEvent({ type: 'tool_done', id, name: tc.name, result: `ERROR: ${err.message}`, error: err.message })
           return `ERROR: ${err.message}`
         }
       })
     )
     const results = settled.map(r => r.status === 'fulfilled' ? r.value : `ERROR: ${r.reason}`)
 
-    // ── Append assistant + tool results to conversation, then prune ───────
+    // ââ Append assistant + tool results to conversation, then prune âââââââ
     const nextMessages = buildToolResultMessages(
       response.toolCalls, results, isAnthropic, response._raw,
     )
     messages = pruneMessages([...messages, ...nextMessages], diary)
 
-    // ── Loop detection ────────────────────────────────────────────────────
+    // ââ Loop detection ââââââââââââââââââââââââââââââââââââââââââââââââââââ
     const sig = toolSignature(response.toolCalls)
     recentSigs.push(sig)
     if (recentSigs.length > LOOP_WINDOW) recentSigs.shift()
     if (recentSigs.length === LOOP_WINDOW && recentSigs.every(s => s === sig)) {
       recentSigs.length = 0   // reset so we only fire once per loop cycle
-      const recoveryNote = '⚠ You appear to be repeating the same tool calls. Try a completely different approach, re-read the relevant files, or conclude with what you have found so far.'
+      const recoveryNote = 'â  You appear to be repeating the same tool calls. Try a completely different approach, re-read the relevant files, or conclude with what you have found so far.'
       messages.push({ role: 'user', content: recoveryNote })
-      onEvent({ type: 'text_delta', delta: '\n[Loop detected — injecting recovery prompt]\n' })
+      onEvent({ type: 'text_delta', delta: '\n[Loop detected â injecting recovery prompt]\n' })
     }
   }
 
-  // Hit MAX_TURNS — emit whatever we have
+  // Hit MAX_TURNS â emit whatever we have
   onEvent({ type: 'done', text: `Reached maximum turn limit (${AGENT_MAX_TURNS}).`, filesChanged })
 }
