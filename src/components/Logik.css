@@ -2689,6 +2689,7 @@ kbd {
 
 .lk-settings-test-result--ok   { color: #34d399; }
 .lk-settings-test-result--fail { color: #f87171; }
+.lk-settings-test-result--warn { color: #fbbf24; }
 
 /* Firebase specific */
 .lk-firebase-steps {

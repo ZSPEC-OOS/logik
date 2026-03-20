@@ -219,11 +219,18 @@ const LogikSettings = memo(function LogikSettings({
                   {testResults[m.id]?.testing ? '…Testing' : 'Test Connection'}
                 </button>
                 {testResults[m.id] && !testResults[m.id].testing && (
-                  <span className={`lk-settings-test-result lk-settings-test-result--${testResults[m.id].ok ? 'ok' : 'fail'}`}>
-                    {testResults[m.id].ok
-                      ? `● Connected (${testResults[m.id].ms}ms)`
-                      : `✗ ${testResults[m.id].error}`}
-                  </span>
+                  <>
+                    <span className={`lk-settings-test-result lk-settings-test-result--${testResults[m.id].ok ? 'ok' : 'fail'}`}>
+                      {testResults[m.id].ok
+                        ? `● Connected (${testResults[m.id].ms}ms)`
+                        : `✗ ${testResults[m.id].error}`}
+                    </span>
+                    {testResults[m.id].ok && testResults[m.id].warning && (
+                      <span className="lk-settings-test-result lk-settings-test-result--warn">
+                        ⚠ {testResults[m.id].warning}
+                      </span>
+                    )}
+                  </>
                 )}
               </div>
             </div>
