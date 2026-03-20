@@ -1,4 +1,4 @@
-// ─── useAgentSession ──────────────────────────────────────────────────────────
+// âââ useAgentSession ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 // Encapsulates all state and logic for running the agentic tool-use loop.
 // Extracted from Logik.jsx to isolate agent concerns from generate/UI concerns.
 
@@ -8,7 +8,7 @@ import { makeExecutor }  from '../../services/agentExecutor.js'
 import { AGENT_TOOLS, buildAgentSystemPrompt } from '../../services/agentTools.js'
 import { shadowContext } from '../../services/shadowContext.js'
 
-// Read-only tools — used when planMode is active (no writes, no shell exec)
+// Read-only tools â used when planMode is active (no writes, no shell exec)
 const PLAN_MODE_TOOLS = new Set([
   'read_file', 'list_directory', 'search_files',
   'grep', 'read_many_files', 'web_fetch', 'web_search',
@@ -17,12 +17,12 @@ const PLAN_MODE_TOOLS = new Set([
 ])
 
 export function useAgentSession({
-  modelConfig,       // {apiKey, baseUrl, modelId, …}
+  modelConfig,       // {apiKey, baseUrl, modelId, â¦}
   githubConfig,      // {token, owner, repo, branch}
-  sourceRepoConfig,  // {token, owner, repo, branch} | null — secondary (read-only) repo
+  sourceRepoConfig,  // {token, owner, repo, branch} | null â secondary (read-only) repo
   bridgeAvailable,   // bool
-  webSearchApiKey,   // string | '' — Tavily API key (optional)
-  planMode,          // bool — read-only analysis mode
+  webSearchApiKey,   // string | '' â Tavily API key (optional)
+  planMode,          // bool â read-only analysis mode
   logActivity,       // (type, msg, detail?) => id
   updateActivity,    // (id, updates) => void
   clearActivity,     // () => void
@@ -37,9 +37,10 @@ export function useAgentSession({
   const [agentFiles,      setAgentFiles]      = useState([])
   const [agentStreamText, setAgentStreamText] = useState('')
 
-  const streamTextRef = useRef('')
-  const abortRef      = useRef(null)
-  const runningRef    = useRef(false)   // guard against concurrent runs
+  const streamTextRef   = useRef('')
+  const abortRef        = useRef(null)
+  const runningRef      = useRef(false)   // guard against concurrent runs
+  const pendingToolsRef = useRef(new Map()) // Map<toolId, activityId> for matching tool_start/done
 
   const run = useCallback(async (task) => {
     if (!task?.trim()) { onSetError?.('Enter a task for the agent.'); return }
@@ -91,7 +92,7 @@ export function useAgentSession({
       shadowContext.buildRepoMap(3000),   // Aider-style symbol map ranked by centrality
     )
 
-    const startId = logActivity('agent', `⚡ Agent starting — "${task.slice(0, 60)}"`)
+    const startId = logActivity('agent', `â¡ Agent starting â "${task.slice(0, 60)}"`)
     onSetActiveTab?.('activity')
 
     try { await runAgentLoop({
@@ -107,11 +108,11 @@ export function useAgentSession({
             // Archive any streamed narration from the previous turn
             const prev = streamTextRef.current.trim()
             if (prev) {
-              logActivity('agent', `💬 ${prev}`)
+              logActivity('agent', `ð¬ ${prev}`)
               streamTextRef.current = ''
               setAgentStreamText('')
             }
-            updateActivity(startId, { msg: `⚡ Agent — turn ${ev.turn}` })
+            updateActivity(startId, { msg: `â¡ Agent â turn ${ev.turn}` })
             break
           }
 
@@ -124,11 +125,11 @@ export function useAgentSession({
             // Flush any streaming narration before the tool line
             const narration = streamTextRef.current.trim()
             if (narration) {
-              logActivity('agent', `💬 ${narration}`)
+              logActivity('agent', `ð¬ ${narration}`)
               streamTextRef.current = ''
               setAgentStreamText('')
             }
-            logActivity('tool', `▶ ${ev.name}(${JSON.stringify(ev.input).slice(0, 80)})`)
+            logActivity('tool', `â¶ ${ev.name}(${JSON.stringify(ev.input).slice(0, 80)})`)
             break
           }
 
@@ -145,21 +146,21 @@ export function useAgentSession({
           }
 
           case 'usage': {
-            // Claude Code-style per-turn token accounting (↑ input  ↓ output)
+            // Claude Code-style per-turn token accounting (â input  â output)
             const fmt = n => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n)
             if (ev.inputTokens || ev.outputTokens)
-              logActivity('agent', `↑ ${fmt(ev.inputTokens)} in  ↓ ${fmt(ev.outputTokens)} out`)
+              logActivity('agent', `â ${fmt(ev.inputTokens)} in  â ${fmt(ev.outputTokens)} out`)
             break
           }
 
           case 'file_write':
-            logActivity('write', `✏ ${ev.action}: ${ev.path}`)
+            logActivity('write', `â ${ev.action}: ${ev.path}`)
             break
 
           case 'done': {
             const final = streamTextRef.current.trim()
             if (final) {
-              logActivity('agent', `💬 ${final}`)
+              logActivity('agent', `ð¬ ${final}`)
               streamTextRef.current = ''
               setAgentStreamText('')
             }
@@ -167,16 +168,16 @@ export function useAgentSession({
             setAgentFiles(ev.filesChanged || [])
             updateActivity(startId, {
               status: 'done',
-              msg: `⚡ Agent done — ${ev.filesChanged?.length || 0} file(s) changed`,
+              msg: `â¡ Agent done â ${ev.filesChanged?.length || 0} file(s) changed`,
             })
-            logActivity('done', `✓ Agent complete`)
+            logActivity('done', `â Agent complete`)
             onSetActiveTab?.('activity')
             break
           }
 
           case 'error':
-            logActivity('error', `✗ Agent error: ${ev.message}`)
-            updateActivity(startId, { status: 'error', msg: `⚡ Agent failed — ${ev.message}` })
+            logActivity('error', `â Agent error: ${ev.message}`)
+            updateActivity(startId, { status: 'error', msg: `â¡ Agent failed â ${ev.message}` })
             break
 
           default: break
@@ -185,8 +186,8 @@ export function useAgentSession({
     }) } catch (unexpectedErr) {
       // runAgentLoop should never throw (emits error events instead), but catch here
       // as an absolute safety net so isAgentRunning is always cleared
-      logActivity('error', `✗ Agent crashed: ${unexpectedErr.message}`)
-      updateActivity(startId, { status: 'error', msg: `⚡ Agent crashed — ${unexpectedErr.message}` })
+      logActivity('error', `â Agent crashed: ${unexpectedErr.message}`)
+      updateActivity(startId, { status: 'error', msg: `â¡ Agent crashed â ${unexpectedErr.message}` })
       onSetError?.(`Agent crashed: ${unexpectedErr.message}`)
     } finally {
       runningRef.current = false
