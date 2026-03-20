@@ -158,12 +158,47 @@ export function clearApiKeys() {
 
 // ── Test connection ───────────────────────────────────────────────────────────
 // Sends a minimal non-streaming request to verify the API key and endpoint work.
-// Returns { ok: true, model, ms } or { ok: false, error }
+// Returns { ok: true, model, ms, warning? } or { ok: false, error }
 export async function testModelConnection(modelConfig) {
   const { apiKey, baseUrl, modelId } = modelConfig || {}
   if (!apiKey)   return { ok: false, error: 'No API key entered' }
   if (!baseUrl)  return { ok: false, error: 'No base URL configured' }
   if (!modelId)  return { ok: false, error: 'No model ID configured' }
+
+  // Validate that baseUrl is a well-formed absolute URL
+  let parsedUrl
+  try {
+    parsedUrl = new URL(baseUrl)
+    if (!parsedUrl.protocol.startsWith('http')) throw new Error('not http')
+  } catch {
+    return { ok: false, error: `Invalid base URL — must be a full URL (e.g. https://api.openai.com/v1)` }
+  }
+
+  // In dev mode, the Vite proxy strips the URL path and replaces it with the
+  // correct /v1 prefix automatically.  This means a test against a broken path
+  // like https://api.anthropic.com/v99-BROKEN will PASS even though the real
+  // URL is wrong — the proxy silently fixes it.  Detect this and warn the user
+  // so they aren't misled into thinking a broken URL is working.
+  let warning = null
+  if (IS_DEV) {
+    const proxied = devProxyUrl(baseUrl)
+    if (proxied !== baseUrl) {
+      // The proxy will override the URL path — check if the configured path looks right.
+      // Most providers use /v1 (or a subpath of it) as the base.
+      const path = parsedUrl.pathname.replace(/\/$/, '')
+      const looksValid =
+        path === '/v1' ||
+        path.startsWith('/v1/') ||
+        path.endsWith('/v1') ||
+        path.includes('/v1beta') ||
+        path.includes('/openai/v1')
+      if (!looksValid) {
+        warning =
+          `Dev proxy overrode the URL path — test passed but the configured path "${parsedUrl.pathname}" looks wrong. ` +
+          `It would fail in production. Expected something like /v1.`
+      }
+    }
+  }
 
   const t0 = Date.now()
   try {
@@ -195,7 +230,7 @@ export async function testModelConnection(modelConfig) {
       } catch {}
       return { ok: false, error: msg }
     }
-    return { ok: true, model: modelId, ms }
+    return { ok: true, model: modelId, ms, warning }
   } catch (e) {
     const isCors = e.message === 'Failed to fetch' || e.name === 'TypeError'
     return {
