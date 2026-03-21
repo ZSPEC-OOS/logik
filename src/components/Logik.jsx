@@ -175,8 +175,28 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
     highlight:  saved.ftHighlight  ?? 50,
     shadow:     saved.ftShadow     ?? 50,
   })
-  const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false)
-  const [mobilePane, setMobilePane] = useState('editor') // editor | context
+  const DEFAULT_HEADER_LAYOUT = useMemo(() => ({
+    headerHeight: 44,
+    titleSize: 11,
+    logoSize: 18,
+    logoOffsetX: 0,
+    logoOffsetY: 0,
+    titleOffsetX: 0,
+    titleOffsetY: 0,
+    toggleOffsetX: 0,
+    toggleOffsetY: 0,
+  }), [])
+  const [headerLayout, setHeaderLayout] = useState({
+    headerHeight: saved.headerHeight ?? 44,
+    titleSize:    saved.titleSize    ?? 11,
+    logoSize:     saved.logoSize     ?? 18,
+    logoOffsetX:  saved.logoOffsetX  ?? 0,
+    logoOffsetY:  saved.logoOffsetY  ?? 0,
+    titleOffsetX: saved.titleOffsetX ?? 0,
+    titleOffsetY: saved.titleOffsetY ?? 0,
+    toggleOffsetX:saved.toggleOffsetX ?? 0,
+    toggleOffsetY:saved.toggleOffsetY ?? 0,
+  })
 
   // ── Input ──────────────────────────────────────────────────────────────
   const [prompt,           setPrompt]           = useState('')
@@ -297,12 +317,21 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
   // fineTune is decomposed into primitives so React can compare by value,
   // not by object reference (which would fire this effect on every render).
   const { brightness, contrast, saturation, highlight, shadow } = fineTune
+  const {
+    headerHeight, titleSize, logoSize,
+    logoOffsetX, logoOffsetY, titleOffsetX, titleOffsetY,
+    toggleOffsetX, toggleOffsetY,
+  } = headerLayout
   useEffect(() => {
     const s = {
       repoOwner, repoName, baseBranch, githubToken,
       theme,
       ftBrightness: brightness, ftContrast: contrast,
-      ftSaturation: saturation, ftHighlight: highlight, ftShadow: shadow,
+      ftSaturation: saturation, ftHighlight: highlight,
+      ftShadow: shadow,
+      headerHeight, titleSize, logoSize,
+      logoOffsetX, logoOffsetY, titleOffsetX, titleOffsetY,
+      toggleOffsetX, toggleOffsetY,
       creativity, enableThinking,
       webSearchApiKey,
       permissionMode,
@@ -312,6 +341,9 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
     onSettingsChangedRef.current?.(s)
   }, [repoOwner, repoName, baseBranch, githubToken,
       theme, brightness, contrast, saturation, highlight, shadow,
+      headerHeight, titleSize, logoSize,
+      logoOffsetX, logoOffsetY, titleOffsetX, titleOffsetY,
+      toggleOffsetX, toggleOffsetY,
       creativity, enableThinking, webSearchApiKey, permissionMode])
 
   // ── Phase 4: start ShadowContext indexing when credentials are ready ────
@@ -1448,6 +1480,14 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
       <nav className="lk-sidebar">
         <button className="lk-sidebar-btn lk-sidebar-btn--back" onClick={onClose} title="Back">←</button>
         <div className="lk-sidebar-sep" />
+        <button className={`lk-sidebar-btn${historyOpen ? ' lk-sidebar-btn--on' : ''}`}
+          onClick={() => { setHistoryOpen(v => !v); setSettingsOpen(false) }} title="History">⧖</button>
+        <button className={`lk-sidebar-btn${settingsOpen ? ' lk-sidebar-btn--on' : ''}`}
+          onClick={() => {
+            setSettingsOpen(v => !v)
+            setHistoryOpen(false)
+            setLogikMdDraft(shadowContext.logikMd || '')
+          }} title="Settings">⚙</button>
         <button
           className="lk-sidebar-btn"
           onClick={handleReset}
@@ -1471,20 +1511,32 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
       <div className="lk-main">
 
         {/* ── Thin top bar ──────────────────────────────────────────────────── */}
-        <div className="lk-topbar">
+        <div className="lk-topbar" style={{ height: `${headerLayout.headerHeight}px` }}>
           <>
 
               <img
                 className="lk-brand-logo"
                 src={logikLogo}
                 alt="LOGIK"
+                style={{
+                  height: `${logoSize}px`,
+                  transform: `translate(${logoOffsetX}px, ${logoOffsetY}px)`,
+                }}
               />
-              <div className="lk-brand-block">
-                <span className="lk-brand-sub">Developer Workspace</span>
-                <span className="lk-brand-meta">{filePath || 'Prompt → plan → code'}</span>
-              </div>
+              <span
+                className="lk-brand-sub"
+                style={{
+                  fontSize: `${titleSize}px`,
+                  transform: `translate(${titleOffsetX}px, ${titleOffsetY}px)`,
+                }}
+              >AI Coding Assistant</span>
 
-              <div className="lk-view-toggle" role="group" aria-label="Execution mode">
+              <div
+                className="lk-view-toggle"
+                role="group"
+                aria-label="Execution mode"
+                style={{ transform: `translate(${toggleOffsetX}px, ${toggleOffsetY}px)` }}
+              >
                 <button
                   className={`lk-view-toggle-btn${planMode ? ' lk-view-toggle-btn--active' : ''}`}
                   onClick={() => setPlanMode(true)}
@@ -1509,43 +1561,11 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
                   title="ShadowContext: background repo index">◈ {shadowStatus}</div>
               )}
           </>
-          <div className="lk-contextual-menu-wrap">
-            <button
-              className={`lk-icon-btn${workspaceMenuOpen ? ' lk-icon-btn--active' : ''}`}
-              title="Workspace menu"
-              onClick={() => setWorkspaceMenuOpen(v => !v)}
-            >☰</button>
-            {workspaceMenuOpen && (
-              <div className="lk-contextual-menu">
-                <div className="lk-contextual-menu-section">
-                  <div className="lk-contextual-menu-label">Model</div>
-                  <select className="lk-model-select" value={activeModelId}
-                    onChange={e => { setActiveModelId(e.target.value); onModelChange?.(e.target.value) }} disabled={busy}>
-                    <option value="">Model…</option>
-                    {(models || []).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                  </select>
-                </div>
-                <button className="lk-contextual-action" onClick={() => { setHistoryOpen(v => !v); setSettingsOpen(false); setWorkspaceMenuOpen(false) }}>
-                  Open history
-                </button>
-                <button className="lk-contextual-action" onClick={() => {
-                  setSettingsOpen(v => !v)
-                  setHistoryOpen(false)
-                  setLogikMdDraft(shadowContext.logikMd || '')
-                  setWorkspaceMenuOpen(false)
-                }}>
-                  Settings
-                </button>
-                <button className="lk-contextual-action" onClick={async () => {
-                  const transcript = conversation.map(msg => `${msg.role.toUpperCase()}: ${msg.content}`).join('\n\n')
-                  try { await navigator.clipboard.writeText(transcript) } catch {}
-                  setWorkspaceMenuOpen(false)
-                }}>
-                  Copy conversation
-                </button>
-              </div>
-            )}
-          </div>
+          <select className="lk-model-select" value={activeModelId}
+            onChange={e => { setActiveModelId(e.target.value); onModelChange?.(e.target.value) }} disabled={busy}>
+            <option value="">Model…</option>
+            {(models || []).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
 
           {/* Account / logout — shown when Firebase auth is active */}
           {onLogout && (
@@ -1578,6 +1598,8 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
             theme={theme}                   setTheme={setTheme}
             fineTune={fineTune}             setFineTune={setFineTune}
             DEFAULT_FT={DEFAULT_FT}
+            headerLayout={headerLayout}     setHeaderLayout={setHeaderLayout}
+            DEFAULT_HEADER_LAYOUT={DEFAULT_HEADER_LAYOUT}
             permissionMode={permissionMode} setPermissionMode={setPermissionMode}
             logikMdDraft={logikMdDraft}     setLogikMdDraft={setLogikMdDraft}
             onSaveLogikMd={handleSaveLogikMd}
@@ -1613,8 +1635,7 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
         {/* ══════════════════════════════════════════════════════════════════
             MAIN FEED — full-height scrollable output area
             ══════════════════════════════════════════════════════════════════ */}
-        <div className="lk-workspace">
-        <div className={`lk-feed${mobilePane === 'context' ? ' lk-feed--mobile-hidden' : ''}`}>
+        <div className="lk-feed">
 
           {/* ── Plan approval gate ────────────────────────────────────────── */}
           {planApproval && (
@@ -1837,37 +1858,11 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
 
           </div>{/* end lk-feed-output */}
         </div>{/* end lk-feed */}
-        <aside className={`lk-context-pane${mobilePane === 'context' ? ' lk-context-pane--mobile-active' : ''}`}>
-          <div className="lk-context-section">
-            <div className="lk-context-title">Conversation</div>
-            {conversation.length === 0 ? (
-              <div className="lk-empty-note">No conversation yet.</div>
-            ) : (
-              conversation.slice(-10).map((msg, idx) => (
-                <div key={`${msg.role}-${idx}`} className="lk-context-msg">
-                  <span className="lk-context-role">{msg.role === 'user' ? 'You' : 'AI'}</span>
-                  <span className="lk-context-text">{msg.content}</span>
-                </div>
-              ))
-            )}
-          </div>
-          <div className="lk-context-section">
-            <div className="lk-context-title">Project Context</div>
-            <div className="lk-context-kv"><span>Repo</span><span>{repoOwner && repoName ? `${repoOwner}/${repoName}` : 'Not connected'}</span></div>
-            <div className="lk-context-kv"><span>Active file</span><span>{filePath || 'None'}</span></div>
-            <div className="lk-context-kv"><span>Plan files</span><span>{filePlan.length}</span></div>
-          </div>
-        </aside>
-        </div>
 
         <>{/* ══════════════════════════════════════════════════
             BOTTOM INPUT BAR — prompt + controls (Claude Code style)
             ══════════════════════════════════════════════════════════════════ */}
         <div className="lk-input-bar">
-          <div className="lk-mobile-pane-toggle" role="tablist" aria-label="Mobile workspace panes">
-            <button className={`lk-mobile-pane-btn${mobilePane === 'editor' ? ' lk-mobile-pane-btn--active' : ''}`} onClick={() => setMobilePane('editor')}>Editor</button>
-            <button className={`lk-mobile-pane-btn${mobilePane === 'context' ? ' lk-mobile-pane-btn--active' : ''}`} onClick={() => setMobilePane('context')}>Context</button>
-          </div>
 
           {/* Inline status: error, push progress, PR link, repo badge */}
           {error && <div className="lk-error" role="alert">{error}</div>}
