@@ -901,6 +901,45 @@
 .lk-repo-auth { color: var(--lk-success); margin-left: auto; }
 .lk-repo-noauth { color: var(--lk-warn); margin-left: auto; }
 
+/* ── Local folder badge + attach button ─────────────────────── */
+.lk-local-badge {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.68rem;
+  font-family: monospace;
+  color: var(--lk-success);
+  padding: 4px 8px;
+  background: var(--lk-success-bg);
+  border: 1px solid rgba(81, 207, 102, 0.30);
+  border-radius: 4px;
+  margin-top: 2px;
+  max-width: 160px;
+}
+.lk-local-badge-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+.lk-local-badge-detach {
+  background: none;
+  border: none;
+  color: var(--lk-text-muted);
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 0.65rem;
+  line-height: 1;
+}
+.lk-local-badge-detach:hover { color: var(--lk-danger); }
+.lk-btn--attach {
+  margin-top: 2px;
+  font-size: 0.65rem;
+  color: var(--lk-text-muted);
+  border-color: var(--lk-border-soft);
+}
+.lk-btn--attach:hover { color: var(--lk-text); border-color: var(--lk-border); }
+
 /* ── Divider ────────────────────────────────────────────────────── */
 .lk-divider {
   width: 1px;

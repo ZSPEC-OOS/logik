@@ -28,6 +28,7 @@ import {
 } from '../utils/codeUtils'
 import { computeLineDiff }   from '../utils/diff'
 import { decodeBase64 }      from '../utils/base64.js'
+import { pickDirectory }     from '../services/localFileService.js'
 import {
   CONTEXT_FILES_LIMIT,
   FILE_CONTENT_CAP_CHARS,
@@ -188,6 +189,8 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
   const [planMode,        setPlanMode]        = useState(false)
   // planApproval: pending plan awaiting user approve/reject/modify
   const [planApproval,    setPlanApproval]    = useState(null) // null | { task, summary }
+  // localDirHandle: File System Access API handle for a locally attached repo folder
+  const [localDirHandle,  setLocalDirHandle]  = useState(null)
   // webSearchApiKey: Tavily API key for agent web_search tool
   const [webSearchApiKey, setWebSearchApiKey] = useState(() => loadSearchKey())
 
@@ -369,7 +372,10 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
     onSetActiveTab:  setActiveTab,
     onSetError:      setError,
     onPromptClear,
-    onPlanDone: (task, summary) => setPlanApproval({ task, summary }),
+    onPlanDone:      (task, summary) => setPlanApproval({ task, summary }),
+    onAgentStart:    (task) => setConversation(prev => [...prev, { role: 'user', content: task }]),
+    onAgentComplete: (task, text) => { if (text?.trim()) setConversation(prev => [...prev, { role: 'assistant', content: text }]) },
+    localDirHandle,
   })
 
   // ── Cost estimate (memoized) ───────────────────────────────────────────
@@ -1933,6 +1939,23 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
                   <span>{repoOwner && repoName ? `${repoOwner}/${repoName}` : repoOwner || repoName}</span>
                   {githubToken ? <span className="lk-repo-auth">● auth</span> : <span className="lk-repo-noauth">○ no token</span>}
                 </div>
+              )}
+              {/* Local folder attachment */}
+              {localDirHandle ? (
+                <div className="lk-local-badge">
+                  <span className="lk-local-badge-icon">📁</span>
+                  <span className="lk-local-badge-name" title="Local folder attached">{localDirHandle.name}</span>
+                  <button className="lk-local-badge-detach" title="Detach local folder" onClick={() => setLocalDirHandle(null)}>✕</button>
+                </div>
+              ) : (
+                <button
+                  className="lk-btn lk-btn--small lk-btn--attach"
+                  title="Attach a local repo folder — agent will read/write files directly on disk"
+                  onClick={async () => {
+                    try { setLocalDirHandle(await pickDirectory()) }
+                    catch (e) { if (e.name !== 'AbortError') setError(`Folder access denied: ${e.message}`) }
+                  }}
+                >📁 Attach folder</button>
               )}
             </div>
 

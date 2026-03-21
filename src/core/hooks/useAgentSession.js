@@ -32,6 +32,9 @@ export function useAgentSession({
   onSetError,        // (msg) => void
   onPromptClear,     // () => void
   onPlanDone,        // (task, summary) => void — called when plan mode agent finishes
+  onAgentStart,       // (task) => void — fires immediately when agent begins (add user bubble)
+  onAgentComplete,    // (task, text) => void — fires on every done (add assistant bubble)
+  localDirHandle,     // FileSystemDirectoryHandle | null — local folder instead of GitHub
 }) {
   const [isAgentRunning,  setIsAgentRunning]  = useState(false)
   const [agentSummary,    setAgentSummary]    = useState('')
@@ -51,6 +54,7 @@ export function useAgentSession({
 
     onSetError?.('')
     runningRef.current = true
+    onAgentStart?.(task)
     clearActivity()
     setIsAgentRunning(true)
     setAgentSummary('')
@@ -69,6 +73,7 @@ export function useAgentSession({
       sourceRepoConfig,
       webSearchApiKey: webSearchApiKey || '',
       bridgeAvailable: !!bridgeAvailable,
+      localDirHandle:  localDirHandle || null,
       onFileWrite: (path, action) => {
         setAgentFiles(prev => prev.includes(path) ? prev : [...prev, path])
         onFileWrite?.(path, action)
@@ -174,6 +179,7 @@ export function useAgentSession({
             })
             logActivity('done', `✓ Agent complete`)
             onSetActiveTab?.('activity')
+            onAgentComplete?.(task, ev.text || '')
             if (planMode && !forceBuildMode) onPlanDone?.(task, ev.text || '')
             break
           }
@@ -200,7 +206,8 @@ export function useAgentSession({
       onPromptClear?.()
     }
   }, [modelConfig, githubConfig, sourceRepoConfig, bridgeAvailable, webSearchApiKey, planMode,
-      logActivity, updateActivity, clearActivity, activityRef, onFileWrite, onSetActiveTab, onSetError, onPromptClear])
+      logActivity, updateActivity, clearActivity, activityRef, onFileWrite, onSetActiveTab, onSetError, onPromptClear,
+      onPlanDone, onAgentStart, onAgentComplete])
 
   const abort = useCallback(() => {
     abortRef.current?.abort()

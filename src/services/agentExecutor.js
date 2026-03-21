@@ -26,6 +26,7 @@ import {
   listFileCommits,
 } from './githubService.js'
 import { decodeBase64 } from '../utils/base64.js'
+import { readLocalFile, writeLocalFile, listLocalDir } from './localFileService.js'
 import { shadowContext } from './shadowContext.js'
 import { EXEC_BRIDGE_TIMEOUT_MS } from '../config/constants.js'
 
@@ -113,16 +114,22 @@ function buildCommitMsg(action, path, userMsg) {
   return `${type}(${stem}): ${verb} ${name}`
 }
 
-export function makeExecutor({ token, owner, repo, branch, onFileWrite, sourceRepoConfig, webSearchApiKey, bridgeAvailable }) {
+export function makeExecutor({ token, owner, repo, branch, onFileWrite, sourceRepoConfig, webSearchApiKey, bridgeAvailable, localDirHandle }) {
   return async function executeTool(name, input) {
     switch (name) {
 
       // ── read_file (with optional line range) ───────────────────────────
       case 'read_file': {
-        const file = await getFileContent(token, owner, repo, input.path, branch)
-        if (!file?.content) return `File not found: ${input.path}`
-        const content = decodeBase64(file.content)
-        const lines   = content.split('\n')
+        let content
+        if (localDirHandle) {
+          try { content = await readLocalFile(localDirHandle, input.path) }
+          catch { return `File not found: ${input.path}` }
+        } else {
+          const file = await getFileContent(token, owner, repo, input.path, branch)
+          if (!file?.content) return `File not found: ${input.path}`
+          content = decodeBase64(file.content)
+        }
+        const lines = content.split('\n')
         if (input.start_line || input.end_line) {
           const s = Math.max(0, (input.start_line || 1) - 1)
           const e = Math.min(lines.length, input.end_line || lines.length)
@@ -136,9 +143,14 @@ export function makeExecutor({ token, owner, repo, branch, onFileWrite, sourceRe
         const paths = (input.paths || []).slice(0, 20)
         if (paths.length === 0) return 'No paths provided.'
         const settled = await Promise.allSettled(paths.map(async p => {
-          const file = await getFileContent(token, owner, repo, p, branch)
-          if (!file?.content) return `--- ${p} ---\nFile not found.`
-          const content = decodeBase64(file.content)
+          let content
+          if (localDirHandle) {
+            content = await readLocalFile(localDirHandle, p)
+          } else {
+            const file = await getFileContent(token, owner, repo, p, branch)
+            if (!file?.content) return `--- ${p} ---\nFile not found.`
+            content = decodeBase64(file.content)
+          }
           return `--- ${p} (${content.split('\n').length} lines) ---\n${content.slice(0, 10000)}`
         }))
         return settled.map(r => r.status === 'fulfilled' ? r.value : `Error: ${r.reason}`).join('\n\n')
@@ -146,26 +158,35 @@ export function makeExecutor({ token, owner, repo, branch, onFileWrite, sourceRe
 
       // ── write_file ─────────────────────────────────────────────────────
       case 'write_file': {
-        const existing = await getFileContent(token, owner, repo, input.path, branch)
-        const sha      = existing?.sha || null
-        const msg      = buildCommitMsg(sha ? 'edit' : 'write', input.path, input.message)
-        await createOrUpdateFile(token, owner, repo, input.path, input.content, msg, branch, sha)
+        if (localDirHandle) {
+          await writeLocalFile(localDirHandle, input.path, input.content)
+        } else {
+          const existing = await getFileContent(token, owner, repo, input.path, branch)
+          const sha      = existing?.sha || null
+          const msg      = buildCommitMsg(sha ? 'edit' : 'write', input.path, input.message)
+          await createOrUpdateFile(token, owner, repo, input.path, input.content, msg, branch, sha)
+        }
         onFileWrite?.(input.path, 'write')
         return `Written: ${input.path} (${input.content.split('\n').length} lines)`
       }
 
       // ── edit_file (with Aider-style similar-lines diagnostic on failure) ─
       case 'edit_file': {
-        const file = await getFileContent(token, owner, repo, input.path, branch)
-        if (!file?.content) return `File not found: ${input.path}`
-        const current = decodeBase64(file.content)
+        let current, fileSha
+        if (localDirHandle) {
+          try { current = await readLocalFile(localDirHandle, input.path) }
+          catch { return `File not found: ${input.path}` }
+        } else {
+          const file = await getFileContent(token, owner, repo, input.path, branch)
+          if (!file?.content) return `File not found: ${input.path}`
+          current = decodeBase64(file.content)
+          fileSha = file.sha
+        }
 
         if (!current.includes(input.old_str)) {
-          // Tier 2: try stripping uniform leading whitespace
           const normCurrent = current.split('\n').map(l => l.trimStart()).join('\n')
           const normOld     = input.old_str.split('\n').map(l => l.trimStart()).join('\n')
           if (!normCurrent.includes(normOld)) {
-            // Tier 3: show similar lines so the model can self-correct (Aider diagnostic)
             const similar = findSimilarLines(current, input.old_str)
             const hint = similar
               ? `\n\nMost similar lines found in ${input.path}:\n${similar}\n\nCopy the exact text including all whitespace.`
@@ -176,8 +197,12 @@ export function makeExecutor({ token, owner, repo, branch, onFileWrite, sourceRe
         }
 
         const updated = current.replace(input.old_str, input.new_str)
-        const msg = buildCommitMsg('edit', input.path, input.message)
-        await createOrUpdateFile(token, owner, repo, input.path, updated, msg, branch, file.sha)
+        if (localDirHandle) {
+          await writeLocalFile(localDirHandle, input.path, updated)
+        } else {
+          const msg = buildCommitMsg('edit', input.path, input.message)
+          await createOrUpdateFile(token, owner, repo, input.path, updated, msg, branch, fileSha)
+        }
         onFileWrite?.(input.path, 'edit')
         return `Edited: ${input.path}`
       }
@@ -194,6 +219,11 @@ export function makeExecutor({ token, owner, repo, branch, onFileWrite, sourceRe
 
       // ── list_directory (with file sizes) ──────────────────────────────
       case 'list_directory': {
+        if (localDirHandle) {
+          const items = await listLocalDir(localDirHandle, input.path || '')
+          if (items.length === 0) return `Empty or not found: ${input.path || '/'}`
+          return items.map(i => `${i.type === 'dir' ? 'd' : 'f'} ${i.path}`).join('\n')
+        }
         const items = await listDirectory(token, owner, repo, input.path || '', branch)
         if (items.length === 0) return `Empty or not found: ${input.path || '/'}`
         return items.map(i => {
