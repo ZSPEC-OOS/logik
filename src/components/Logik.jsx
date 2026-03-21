@@ -17,6 +17,11 @@ import { estimateCost, formatCost } from '../utils/tokenEstimator'
 import { shadowContext } from '../services/shadowContext'
 import { isVaguePrompt, amplifyPrompt } from '../services/intentAmplifier'
 import { buildFilePlan } from '../services/planner'
+import {
+  createPipelineSteps,
+  formatStructuredOutput,
+  parsePromptCommand,
+} from '../services/interactivePipeline'
 import { useConversation }   from '../core/hooks/useConversation'
 import { useExecBridge }     from '../core/hooks/useExecBridge'
 import { useActivityLog }    from '../core/hooks/useActivityLog'
@@ -287,6 +292,11 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
   // ── Phase 4: ShadowContext ─────────────────────────────────────────────
   const [shadowStatus,  setShadowStatus]  = useState(null)   // null | string
 
+  // ── Interactive response pipeline ──────────────────────────────────────
+  const [pipelinePhase, setPipelinePhase] = useState('understanding')
+  const [pipelineSteps, setPipelineSteps] = useState(() => createPipelineSteps('understanding'))
+  const [validationResults, setValidationResults] = useState([])
+
   // ── Phase 2: IntentAmplifier ───────────────────────────────────────────
   const [isAmplifying,       setIsAmplifying]       = useState(false)
   const [amplifierDecisions, setAmplifierDecisions] = useState([])  // string[]
@@ -456,6 +466,11 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
   }, [])
 
   // Order files so that dependencies appear before dependents (if import graph is available).
+  const setActivePhase = useCallback((phase) => {
+    setPipelinePhase(phase)
+    setPipelineSteps(createPipelineSteps(phase))
+  }, [])
+
   const orderFilePlan = useCallback((plan) => {
     const graph = shadowContext.getImportGraph() || {}
     const paths = plan.map(p => p.path)
@@ -588,7 +603,25 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
     if (!model)        { setError('Select a model.'); return }
     if (!model.apiKey) { setError(`No API key for "${model.name}". Open Admin Panel.`); return }
 
+    const { command, content } = parsePromptCommand(userMsg)
+    if (command === '/reset') {
+      resetConversation()
+      setFilePlan([])
+      planRef.current = []
+      setTurnCount(0)
+      setValidationResults([])
+      setActivePhase('understanding')
+      return
+    }
+    const requestText = command ? content : userMsg
+    if (!requestText.trim()) {
+      setError(`Add details after ${command}.`)
+      return
+    }
+
     setError('')
+    setValidationResults([])
+    setActivePhase('understanding')
     setAmplifierDecisions([])
     setIsGenerating(true)
 
@@ -613,17 +646,17 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
 
     try {
       // ── Phase 2: IntentAmplifier ─────────────────────────────────────────
-      let effectiveMsg = userMsg
-      if (!isRefinement && isVaguePrompt(userMsg)) {
+      let effectiveMsg = requestText
+      if (!isRefinement && isVaguePrompt(requestText)) {
         setIsAmplifying(true)
         const ampId = logActivity('amplify', '◈ Analyzing intent…')
         const conv = shadowContext.getConventions()
         // Pass last 6 messages (3 turn pairs) for pronoun/reference resolution
         const { enrichedPrompt, decisions } = await amplifyPrompt(
-          userMsg, conv, effectiveModel, ctrl.signal, conversation.slice(-6)
+          requestText, conv, effectiveModel, ctrl.signal, conversation.slice(-6)
         )
         setIsAmplifying(false)
-        if (enrichedPrompt !== userMsg) {
+        if (enrichedPrompt !== requestText) {
           effectiveMsg = enrichedPrompt
           setAmplifierDecisions(decisions)
           updateActivity(ampId, { status: 'done', msg: `◈ Intent clarified — ${decisions.length} assumption${decisions.length !== 1 ? 's' : ''} made` })
@@ -645,6 +678,7 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
           { role: 'assistant', content: 'Understood. I will output only the code.' },
           ...conversation,
         ]
+        setActivePhase('refining')
         const refId = logActivity('generate', `↺ Refining ${entry.path || 'file'}…`)
         let streaming = ''
         const raw = await runPromptWithRetry(effectiveModel, refMsg, ctx, (partial) => {
@@ -658,8 +692,20 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
           if (edits.length > 0) finalCode = result
         }
         updatePlanEntry(activeFileIndex, { code: finalCode, status: 'done' })
+        setActivePhase('validating')
         updateActivity(refId, { status: 'done', msg: `↺ Refined ${entry.path || 'file'}`, detail: `${finalCode.split('\n').length} lines` })
-        setConversation(prev => [...prev, { role: 'user', content: effectiveMsg }, { role: 'assistant', content: finalCode }])
+        const refValidation = ['✓ Refinement applied to active file.', '✓ Output is ready for review.']
+        setValidationResults(refValidation)
+        const refOut = formatStructuredOutput({
+          summary: `Refined ${entry.path || 'active file'} based on follow-up request.`,
+          plan: [`Apply requested changes to ${entry.path || 'active file'}`],
+          code: finalCode,
+          codeLang: lang,
+          changes: [`Updated ${entry.path || 'active file'}`],
+          validation: refValidation,
+          notes: ['Further follow-ups will continue from this state.'],
+        })
+        setConversation(prev => [...prev, { role: 'user', content: effectiveMsg }, { role: 'assistant', content: refOut }])
         setTurnCount(t => t + 1)
         setRefinementPrompt('')
         setActiveTab('code')
@@ -671,6 +717,7 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
         // Pass files from the current plan (prior run) so the planner knows what was
         // recently generated and can build on or avoid redundancy.
         const recentFiles = filePlan.filter(e => e.status === 'done').map(e => e.path)
+        setActivePhase('planning')
         const planId = logActivity('plan', '◈ Building file plan…')
         setIsPlanning(true)
         const rawPlan = await buildFilePlan(
@@ -690,6 +737,22 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
 
         // Order plan entries based on imports (if available) so dependencies are generated first
         const orderedRawPlan = orderFilePlan(rawPlan)
+        if (command === '/plan') {
+          const planOnlyValidation = ['✓ Plan generated.', '✓ No code emitted in /plan mode.']
+          setValidationResults(planOnlyValidation)
+          const planOnlyText = formatStructuredOutput({
+            summary: `Created an execution plan for: ${requestText}`,
+            plan: orderedRawPlan.map((e) => `${e.action === 'modify' ? 'Update' : 'Create'} ${e.path} — ${e.purpose}`),
+            code: '',
+            changes: orderedRawPlan.map((e) => `${e.action === 'modify' ? 'Will update' : 'Will add'} ${e.path}`),
+            validation: planOnlyValidation,
+            notes: ['Run /code to execute this plan.'],
+          })
+          setConversation(prev => [...prev, { role: 'user', content: requestText }, { role: 'assistant', content: planOnlyText }])
+          setTurnCount(t => t + 1)
+          setActivePhase('complete')
+          return
+        }
         // Initialise plan
         const initialPlan = orderedRawPlan.map(e => ({
           ...e, existingContent: null, _sha: null,
@@ -699,8 +762,6 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
         planRef.current = initialPlan
         setFilePlan([...initialPlan])
         setActiveFileIndex(0)
-        setConversation([])
-        setTurnCount(0)
 
         // Hydrate 'modify' files from GitHub
         if (hasGithub) {
@@ -742,6 +803,7 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
         } catch { /* non-fatal — proceed without style injection */ }
 
         // Generate each file in the plan
+        setActivePhase('coding')
         for (let i = 0; i < planRef.current.length; i++) {
           if (ctrl.signal.aborted) break
           setActiveFileIndex(i)
@@ -820,6 +882,7 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
             updateActivity(genId, { status: 'done', msg: `▶ ${entry.path}`, detail: `${finalCode.split('\n').length} lines` })
 
             // AutoRemediation
+            setActivePhase('refining')
             updatePlanEntry(i, { status: 'remediating', code: finalCode })
             const remId = logActivity('remediate', `⊛ Testing ${entry.path}`)
             finalCode = await autoRemediate(finalCode, lang, effectiveModel, ctrl.signal, entry.path, entry.purpose)
@@ -862,12 +925,38 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
 
         // Save to history + summary entry
         if (!ctrl.signal.aborted && planRef.current.length > 0) {
+          setActivePhase('validating')
           const doneCount = planRef.current.filter(e => e.status === 'done').length
           logActivity('done', `✓ Complete — ${doneCount}/${planRef.current.length} file${planRef.current.length !== 1 ? 's' : ''} generated`)
           // Auto-switch to Diff tab when diffs are available (surface review naturally)
           const hasDiffs = planRef.current.some(e => e.diffText?.trim())
           setActiveTab(hasDiffs ? 'diff' : 'code')
-          const he = { id: Date.now().toString(), prompt: userMsg.slice(0, 100), filePath: planRef.current[0]?.path || '', timestamp: new Date().toISOString() }
+          const he = { id: Date.now().toString(), prompt: requestText.slice(0, 100), filePath: planRef.current[0]?.path || '', timestamp: new Date().toISOString() }
+
+          const planSteps = planRef.current.map((e) => `${e.action === 'modify' ? 'Update' : 'Create'} ${e.path} — ${e.purpose}`)
+          const primary = planRef.current[0] || {}
+          const combinedDiff = planRef.current.map((e) => e.diffText?.trim()).filter(Boolean).join('\n\n')
+          const validation = [
+            `✓ Generated ${doneCount}/${planRef.current.length} planned file(s).`,
+            planRef.current.some((e) => e.status === 'error') ? '⚠ Some files failed and may need retry.' : '✓ No file-level generation errors.',
+            generateTests ? '✓ Test generation attempted for completed files.' : '⚠ Test generation disabled.',
+          ]
+          setValidationResults(validation)
+
+          const modeCode = command === '/diff' ? combinedDiff : (primary.code || '')
+          const assistantText = formatStructuredOutput({
+            summary: `Implemented: ${requestText}`,
+            plan: planSteps,
+            code: modeCode,
+            codeLang: command === '/diff' ? 'diff' : detectLanguage(primary.path || '', primary.code || ''),
+            changes: planRef.current.map((e) => `${e.action === 'modify' ? 'Updated' : 'Added'} ${e.path}`),
+            validation,
+            notes: [
+              command === '/plan' ? 'Plan-only mode requested.' : 'Use follow-up prompts to iteratively modify generated files.',
+            ],
+          })
+          setConversation(prev => [...prev, { role: 'user', content: requestText }, { role: 'assistant', content: assistantText }])
+          setTurnCount(t => t + 1)
           const updated = [he, ...history]
           setHistory(updated)
           saveHistory(updated)
@@ -884,13 +973,14 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
       setIsPlanning(false)
       setIsAmplifying(false)
       setIsGenTests(false)   // safety net — ensures it can never stay stuck
+      setActivePhase('complete')
       setPrompt('')
     }
   }, [
     prompt, models, activeModelId, conversation, filePlan,
     generateTests, creativity, enableThinking,
     repoOwner, repoName, baseBranch, githubToken, hasGithub,
-    history, activeFileIndex, autoRemediate, updatePlanEntry, logActivity, updateActivity,
+    history, activeFileIndex, autoRemediate, updatePlanEntry, logActivity, updateActivity, setActivePhase, resetConversation,
   ])
 
   // ── Refinement shortcut ─────────────────────────────────────────────────
@@ -1751,6 +1841,9 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
               onRefine={handleRefine}
               onReset={handleReset}
               turnCount={turnCount}
+              pipelinePhase={pipelinePhase}
+              pipelineSteps={pipelineSteps}
+              validationResults={validationResults}
             />
           )}
 

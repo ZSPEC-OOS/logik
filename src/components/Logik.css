@@ -4573,3 +4573,52 @@ kbd {
   border-radius: 3px;
   word-break: break-all;
 }
+
+/* ── Interactive pipeline tracker ─────────────────────────────────────────── */
+.lk-phase-tracker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(10, 14, 22, 0.6);
+}
+.lk-phase-pill {
+  font-size: 11px;
+  border-radius: 999px;
+  padding: 3px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #aebbd1;
+}
+.lk-phase-pill--active {
+  color: #d6f7ff;
+  border-color: rgba(73, 197, 255, 0.7);
+  box-shadow: 0 0 0 1px rgba(73, 197, 255, 0.25) inset;
+}
+.lk-phase-pill--done {
+  color: #baf3c7;
+  border-color: rgba(102, 214, 134, 0.5);
+}
+.lk-phase-current {
+  margin-left: auto;
+  font-size: 11px;
+  color: #8ea4c8;
+  text-transform: capitalize;
+}
+.lk-validation-panel {
+  margin: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: rgba(8, 12, 20, 0.8);
+}
+.lk-validation-title {
+  font-size: 11px;
+  color: #95b0d9;
+  margin-bottom: 6px;
+}
+.lk-validation-row {
+  font-size: 12px;
+  color: #c4d8f4;
+  line-height: 1.4;
+}

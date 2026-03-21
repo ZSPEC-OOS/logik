@@ -14,9 +14,22 @@ const LogikCodePane = memo(function LogikCodePane({
   onRefine,
   onReset,
   turnCount,
+  pipelinePhase,
+  pipelineSteps,
+  validationResults,
 }) {
   return (
     <div className="lk-output" style={{ display: 'flex', flexDirection: 'column' }}>
+      {!!pipelineSteps?.length && (
+        <div className="lk-phase-tracker" aria-live="polite">
+          {pipelineSteps.map((step) => (
+            <span key={step.key} className={`lk-phase-pill lk-phase-pill--${step.state}`}>
+              {step.state === 'done' ? '✓' : step.state === 'active' ? '●' : '○'} {step.label}
+            </span>
+          ))}
+          <span className="lk-phase-current">Current: {pipelinePhase}</span>
+        </div>
+      )}
       <div className="lk-code-scroll" style={{ flex: 1 }}>
         {isGenerating && !generatedCode && (
           <div className="lk-generating"><span className="lk-spinner" /> Generating…</div>
@@ -33,6 +46,15 @@ const LogikCodePane = memo(function LogikCodePane({
             {hasGithub && <p className="lk-placeholder-tip">LOGIK will automatically plan and generate across all relevant files.</p>}
           </div>
         ) : null}
+
+        {!!validationResults?.length && (
+          <div className="lk-validation-panel">
+            <div className="lk-validation-title">Validation</div>
+            {validationResults.map((result, idx) => (
+              <div key={`${result}-${idx}`} className="lk-validation-row">{result}</div>
+            ))}
+          </div>
+        )}
       </div>
 
       {generatedCode && !isGenerating && (
