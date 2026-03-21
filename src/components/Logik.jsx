@@ -41,6 +41,7 @@ import LogikTerminal     from './logik/LogikTerminal'
 import LogikToolsPane    from './logik/LogikToolsPane'
 import LogikSettings     from './logik/LogikSettings'
 import LogikFusionPanel  from './logik/LogikFusionPanel'
+import LogikModularTools from './logik/LogikModularTools'
 import './Logik.css'
 
 // ─── Persistence ────────────────────────────────────────────────────────────
@@ -1463,6 +1464,7 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
     { id: 'run',    label: '▶ Run', hidden: !generatedCode },
     { id: 'terminal', label: 'Terminal ●', hidden: !bridgeAvailable },
     { id: 'tools',    label: 'Tools ●',    hidden: !bridgeAvailable },
+    { id: 'modules',  label: '⊕ Modules' },
     { id: 'fusion',   label: '⟳ Fusion',  hidden: !hasBothRepos },
   ]
   const visibleTabs = tabs.filter(t => !t.hidden)
@@ -1908,6 +1910,10 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
               callExecBridge={callExecBridge}
               onSetActiveTab={setActiveTab}
             />
+          )}
+
+          {effectiveActiveTab === 'modules' && (
+            <LogikModularTools />
           )}
 
           {effectiveActiveTab === 'fusion' && hasBothRepos && (

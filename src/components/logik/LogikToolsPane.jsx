@@ -1,9 +1,7 @@
 import { useState, memo } from 'react'
-import LogikModularTools from './LogikModularTools'
 
 // ─── LogikToolsPane ───────────────────────────────────────────────────────────
 // Quick-access tool buttons (npm test / lint / build / git) + custom command input.
-// Also hosts the Modular Tool System: drag-and-drop installer + tool registry.
 const TOOL_BUTTONS = [
   { label: 'Run Tests',    cmd: 'npm test',              tool: 'test'       },
   { label: 'Run Linter',   cmd: 'npm run lint',          tool: 'lint'       },
@@ -18,9 +16,8 @@ const LogikToolsPane = memo(function LogikToolsPane({
   callExecBridge,
   onSetActiveTab,
 }) {
-  const [toolOutput,     setToolOutput]     = useState([])
-  const [customCommand,  setCustomCommand]  = useState('')
-  const [paneTab,        setPaneTab]        = useState('shell') // 'shell' | 'modules'
+  const [toolOutput,    setToolOutput]    = useState([])
+  const [customCommand, setCustomCommand] = useState('')
 
   async function runTool(cmd) {
     const ts = new Date().toISOString()
@@ -42,27 +39,6 @@ const LogikToolsPane = memo(function LogikToolsPane({
 
   return (
     <div className="lk-output" style={{ display: 'flex', flexDirection: 'column' }}>
-
-      {/* ── Inner tab bar: Shell Commands vs. Modular Tools ─────────────────── */}
-      <div className="lk-tools-pane-tabs">
-        <button
-          className={`lk-tools-pane-tab${paneTab === 'shell' ? ' lk-tools-pane-tab--active' : ''}`}
-          onClick={() => setPaneTab('shell')}
-        >
-          Shell Commands
-        </button>
-        <button
-          className={`lk-tools-pane-tab${paneTab === 'modules' ? ' lk-tools-pane-tab--active' : ''}`}
-          onClick={() => setPaneTab('modules')}
-        >
-          ⊕ Tool Modules
-        </button>
-      </div>
-
-      {paneTab === 'modules' ? (
-        <LogikModularTools />
-      ) : (
-      <>
       <div className="lk-tools-controls">
         <div className="lk-tools-warn">
           {bridgeAvailable === true
@@ -123,8 +99,6 @@ const LogikToolsPane = memo(function LogikToolsPane({
           ))
         )}
       </div>
-      </>
-      )}
     </div>
   )
 })
