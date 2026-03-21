@@ -30,21 +30,66 @@ export async function execute(input, config = {}) {
 }
 
 export async function test() {
-  const written = []
-  try {
-    const result = await execute(
-      { note: 'Test note' },
-      {
-        getFileContent: async () => '# Existing',
-        createOrUpdateFile: async ({ content }) => { written.push(content) },
-        repoOwner: 'test', repoName: 'repo', baseBranch: 'main', githubToken: '',
+  const failures = []
+  let lastWritten = null
+
+  function makeConfig(existingContent, throwOnRead = false) {
+    lastWritten = null
+    return {
+      getFileContent: async () => {
+        if (throwOnRead) throw new Error('file not found')
+        return existingContent
       },
-    )
-    if (result.appended && written[0]?.includes('Test note')) {
-      return { passed: true, message: 'update-memory self-test passed.' }
+      createOrUpdateFile: async ({ content }) => { lastWritten = content },
+      repoOwner: 'test', repoName: 'repo', baseBranch: 'main', githubToken: '',
     }
-    return { passed: false, message: 'Unexpected result.' }
-  } catch (err) {
-    return { passed: false, message: `Error: ${err.message}` }
   }
+
+  // Trial 1: note is appended after existing content
+  await execute({ note: 'Use Vite for bundling.' }, makeConfig('# Existing notes\n\nSome prior text.'))
+  if (!lastWritten?.includes('Use Vite for bundling.')) failures.push('Trial 1: note not in output')
+  if (!lastWritten?.includes('# Existing notes'))      failures.push('Trial 1: existing content was lost')
+
+  // Trial 2: existing content comes before new note
+  const lines2 = lastWritten?.split('\n') || []
+  const existingIdx = lines2.findIndex(l => l.includes('Existing'))
+  const noteIdx     = lines2.findIndex(l => l.includes('Use Vite'))
+  if (existingIdx >= noteIdx) failures.push('Trial 2: existing content should appear before new note')
+
+  // Trial 3: timestamp header is injected between old and new content
+  const today = new Date().toISOString().split('T')[0]
+  if (!lastWritten?.includes(`<!-- ${today} -->`)) failures.push(`Trial 3: timestamp header missing (expected <!-- ${today} -->)`)
+
+  // Trial 4: fresh file (read throws) — note becomes the entire content
+  await execute({ note: 'First ever note.' }, makeConfig('', true))
+  if (!lastWritten?.startsWith('<!-- '))         failures.push('Trial 4: fresh file should start with timestamp header')
+  if (!lastWritten?.includes('First ever note')) failures.push('Trial 4: note missing in fresh file')
+
+  // Trial 5: multiple appends accumulate correctly
+  await execute({ note: 'Note A' }, makeConfig('# Base'))
+  const afterA = lastWritten
+  await execute({ note: 'Note B' }, makeConfig(afterA))
+  if (!lastWritten?.includes('Note A')) failures.push('Trial 5: Note A was lost after Note B appended')
+  if (!lastWritten?.includes('Note B')) failures.push('Trial 5: Note B missing')
+  if (!lastWritten?.includes('# Base')) failures.push('Trial 5: original base content lost')
+
+  // Trial 6: always writes to LOGIK.md specifically
+  let writtenPath = null
+  await execute({ note: 'x' }, {
+    getFileContent: async () => '',
+    createOrUpdateFile: async ({ path }) => { writtenPath = path },
+    repoOwner: 'test', repoName: 'repo', baseBranch: 'main', githubToken: '',
+  })
+  if (writtenPath !== 'LOGIK.md') failures.push(`Trial 6: should write to LOGIK.md, got "${writtenPath}"`)
+
+  // Trial 7: missing note throws
+  try {
+    await execute({}, makeConfig(''))
+    failures.push('Trial 7: should throw for missing note')
+  } catch (e) {
+    if (!e.message.includes('note')) failures.push(`Trial 7: wrong error: ${e.message}`)
+  }
+
+  if (failures.length) return { passed: false, message: failures.join(' | ') }
+  return { passed: true, message: 'All 7 trials passed (append, order, timestamp, fresh file, accumulation, path, error guard).' }
 }
