@@ -6,6 +6,18 @@ import { LOGIK_MD_CAP } from '../config/constants.js'
 
 export const AGENT_TOOLS = [
   {
+    name: 'analyze_codebase',
+    description: 'Generate an architecture-level summary from the indexed repository: conventions, dependency hotspots, and a compact repo map.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        top_hubs:  { type: 'number', description: 'How many top dependency hubs to return (default 10, max 20)' },
+        max_chars: { type: 'number', description: 'Character budget for the repo map section (default 3000)' },
+      },
+      required: [],
+    },
+  },
+  {
     name: 'read_file',
     description: 'Read the contents of a file from the connected GitHub repository. For large files use start_line/end_line to read only the relevant section.',
     input_schema: {
@@ -247,8 +259,8 @@ export function buildAgentSystemPrompt(conventions, logikMd, repoOwner, repoName
     !planMode && hasSrc ? `SOURCE repository (read-only):    ${srcLabel} (branch: ${sourceRepoConfig?.branch || 'main'})` : null,
     !planMode && hasSrc ? `` : null,
     planMode
-      ? `You have access to read_file (with optional start_line/end_line), read_many_files, list_directory, search_files, grep, and lint_file to explore and analyse the codebase.`
-      : `You have access to tools that let you read files, write files, edit files, search the codebase, grep file contents, lint JS/TS files, run shell commands, and create pull requests.`,
+      ? `You have access to analyze_codebase, read_file (with optional start_line/end_line), read_many_files, list_directory, search_files, grep, and lint_file to explore and analyse the codebase.`
+      : `You have access to tools that let you analyze_codebase, read files, write files, edit files, search the codebase, grep file contents, lint JS/TS files, run shell commands, and create pull requests.`,
     !planMode && hasSrc ? `You also have read_source_file and list_source_directory to read from the SOURCE repo.` : null,
     webSearch ? `You have web_search (Tavily) and web_fetch to look up documentation, errors, or research.` : `You have web_fetch to read URLs when the exec bridge is active.`,
     `Use grep to search file contents by regex — far faster than opening files one by one.`,
@@ -261,7 +273,7 @@ export function buildAgentSystemPrompt(conventions, logikMd, repoOwner, repoName
     `WORKFLOW:`,
     `1. Use todo(add) to list the steps you plan to take for complex tasks.`,
     planMode
-      ? `2. Explore the codebase: grep for symbols/patterns, list_directory for structure, read_many_files for multiple files at once.`
+      ? `2. Explore the codebase: start with analyze_codebase, then use grep for symbols/patterns, list_directory for structure, and read_many_files for multiple files at once.`
       : `2. Explore the codebase: grep for patterns, search_files for relevance, list_directory for structure.`,
     !planMode && hasSrc ? `2b. Explore the SOURCE repo using list_source_directory and read_source_file.` : null,
     planMode
