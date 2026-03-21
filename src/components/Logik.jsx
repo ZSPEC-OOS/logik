@@ -14,7 +14,7 @@ import {
   getWorkflowRun,
 } from '../services/githubService'
 import { estimateCost, formatCost } from '../utils/tokenEstimator'
-import { shadowContext, shadowContext2 } from '../services/shadowContext'
+import { shadowContext } from '../services/shadowContext'
 import { isVaguePrompt, amplifyPrompt } from '../services/intentAmplifier'
 import { buildFilePlan } from '../services/planner'
 import { useConversation }   from '../core/hooks/useConversation'
@@ -40,7 +40,7 @@ import LogikDiffViewer   from './logik/LogikDiffViewer'
 import LogikTerminal     from './logik/LogikTerminal'
 import LogikToolsPane    from './logik/LogikToolsPane'
 import LogikSettings     from './logik/LogikSettings'
-import LogikFusionPanel  from './logik/LogikFusionPanel'
+import LogikSelfImprovePanel from './logik/LogikSelfImprovePanel'
 import LogikModularTools from './logik/LogikModularTools'
 import './Logik.css'
 
@@ -60,19 +60,15 @@ function loadSettings() {
       try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)) } catch {}
     }
     try { s.githubToken  = sessionStorage.getItem(GHTOKEN_SS_KEY)  || '' } catch {}
-    try { s.repo2Token   = sessionStorage.getItem(GHTOKEN2_SS_KEY) || '' } catch {}
     return s
   } catch { return {} }
 }
 function saveSettings(s) {
   try {
-    const { githubToken, repo2Token, ...rest } = s
+    const { githubToken, ...rest } = s
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(rest))
     if (githubToken !== undefined) {
-      try { sessionStorage.setItem(GHTOKEN_SS_KEY,  githubToken || '') } catch {}
-    }
-    if (repo2Token !== undefined) {
-      try { sessionStorage.setItem(GHTOKEN2_SS_KEY, repo2Token  || '') } catch {}
+      try { sessionStorage.setItem(GHTOKEN_SS_KEY, githubToken || '') } catch {}
     }
   } catch {}
 }
@@ -164,12 +160,7 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
   const [repoName,       setRepoName]       = useState(saved.repoName    || '')
   const [baseBranch,     setBaseBranch]     = useState(saved.baseBranch  || 'main')
   const [githubToken,    setGithubToken]    = useState(saved.githubToken || '')
-  // ── Source (secondary) repo — for Fusion mode ─────────────────────────
-  const [repo2Owner,  setRepo2Owner]  = useState(saved.repo2Owner  || '')
-  const [repo2Name,   setRepo2Name]   = useState(saved.repo2Name   || '')
-  const [repo2Branch, setRepo2Branch] = useState(saved.repo2Branch || 'main')
-  const [repo2Token,  setRepo2Token]  = useState(saved.repo2Token  || '')
-  const [shadowStatus2, setShadowStatus2] = useState(null)
+  const [selfImproveActive, setSelfImproveActive] = useState(false)
   const [doCreateBranch, setDoCreateBranch] = useState(true)
   const [doCreatePR,     setDoCreatePR]     = useState(true)
   const [dryRun,         setDryRun]         = useState(false)
@@ -215,7 +206,7 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
   // ── Output ─────────────────────────────────────────────────────────────
   const [activeTab,  setActiveTab]  = useState('code')
   // viewMode — top-level toggle between the chat/plan view and the code view
-  const [viewMode,   setViewMode]   = useState('chat')  // 'chat' | 'code' | 'fusion'
+  const [viewMode,   setViewMode]   = useState('chat')  // 'chat' | 'code' | 'self-improve'
   const [gitStatus,  setGitStatus]  = useState(null)
   const [prResult,   setPrResult]   = useState(null)
   const [workflows,  setWorkflows]  = useState([])
@@ -285,7 +276,6 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
   const abortRef = useRef(null)
   const language = detectLanguage(filePath, generatedCode)
   const hasGithub    = !!(githubToken && repoOwner && repoName)
-  const hasBothRepos = !!(hasGithub && repo2Owner && repo2Name)
 
   // ── Sync model from parent ──────────────────────────────────────────────
   useEffect(() => {
@@ -305,7 +295,6 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
   useEffect(() => {
     const s = {
       repoOwner, repoName, baseBranch, githubToken,
-      repo2Owner, repo2Name, repo2Branch, repo2Token,
       theme,
       ftBrightness: brightness, ftContrast: contrast,
       ftSaturation: saturation, ftHighlight: highlight,
@@ -317,7 +306,7 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
     saveSettings(s)
     // Notify App.jsx so it can debounce-save to Firestore (cloud persistence)
     onSettingsChangedRef.current?.(s)
-  }, [repoOwner, repoName, baseBranch, githubToken, repo2Owner, repo2Name, repo2Branch, repo2Token,
+  }, [repoOwner, repoName, baseBranch, githubToken,
       theme, brightness, contrast, saturation, highlight, shadow,
       creativity, enableThinking, webSearchApiKey, permissionMode])
 
@@ -329,14 +318,6 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
     })
   }, [hasGithub, githubToken, repoOwner, repoName, baseBranch])
 
-  // ── Source repo indexing (Fusion mode) ────────────────────────────────
-  useEffect(() => {
-    if (!repo2Owner || !repo2Name) return
-    const token = repo2Token || githubToken
-    shadowContext2.startIndexing(token, repo2Owner, repo2Name, repo2Branch || 'main', () => {
-      setShadowStatus2(shadowContext2.statusSummary())
-    })
-  }, [repo2Owner, repo2Name, repo2Branch, repo2Token, githubToken])
 
 
   // ── State watchdog — detects and resets stuck busy flags ───────────────
@@ -373,17 +354,11 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
     () => ({ token: githubToken, owner: repoOwner, repo: repoName, branch: baseBranch }),
     [githubToken, repoOwner, repoName, baseBranch],
   )
-  const sourceRepoConfig = useMemo(
-    () => hasBothRepos
-      ? { token: repo2Token || githubToken, owner: repo2Owner, repo: repo2Name, branch: repo2Branch || 'main' }
-      : null,
-    [hasBothRepos, repo2Token, githubToken, repo2Owner, repo2Name, repo2Branch],
-  )
   const onPromptClear = useCallback(() => setPrompt(''), [])
   const agentSession = useAgentSession({
     modelConfig:     activeModel,
     githubConfig,
-    sourceRepoConfig,
+    sourceRepoConfig: null,
     bridgeAvailable,
     webSearchApiKey,
     planMode,
@@ -1464,8 +1439,8 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
     { id: 'run',    label: '▶ Run', hidden: !generatedCode },
     { id: 'terminal', label: 'Terminal ●', hidden: !bridgeAvailable },
     { id: 'tools',    label: 'Tools ●',    hidden: !bridgeAvailable },
-    { id: 'modules',  label: '⊕ Modules' },
-    { id: 'fusion',   label: '⟳ Fusion',  hidden: !hasBothRepos },
+    { id: 'modules',      label: '⊕ Modules' },
+    { id: 'self-improve', label: '⟳ Self-Improve' },
   ]
   const visibleTabs = tabs.filter(t => !t.hidden)
   // In chat mode always show the activity feed regardless of which tab is stored.
@@ -1538,10 +1513,10 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
                   title="Code — see the generated files"
                 >Code</button>
                 <button
-                  className={`lk-view-toggle-btn lk-view-toggle-btn--fusion${viewMode === 'fusion' ? ' lk-view-toggle-btn--fusion-active' : ''}`}
-                  onClick={() => setViewMode('fusion')}
-                  title="Fusion — attach a repo and absorb its best material"
-                >⟳ Fusion</button>
+                  className={`lk-view-toggle-btn${viewMode === 'self-improve' ? ' lk-view-toggle-btn--active' : ''}`}
+                  onClick={() => setViewMode('self-improve')}
+                  title="Self-Improve — attach a repo and run autonomous improvement cycles"
+                >⟳ Self-Improve</button>
               </div>
 
               {turnCount > 0 && (
@@ -1583,12 +1558,6 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
             baseBranch={baseBranch}       setBaseBranch={setBaseBranch}
             hasGithub={hasGithub}
             onReindex={handleReindex}
-            repo2Token={repo2Token}       setRepo2Token={setRepo2Token}
-            repo2Owner={repo2Owner}       setRepo2Owner={setRepo2Owner}
-            repo2Name={repo2Name}         setRepo2Name={setRepo2Name}
-            repo2Branch={repo2Branch}     setRepo2Branch={setRepo2Branch}
-            hasBothRepos={hasBothRepos}
-            onReindex2={() => shadowContext2.reindex()}
             generateTests={generateTests}     setGenerateTests={setGenerateTests}
             creativity={creativity}           setCreativity={setCreativity}
             enableThinking={enableThinking}   setEnableThinking={setEnableThinking}
@@ -1634,25 +1603,19 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
         {/* ══════════════════════════════════════════════════════════════════
             MAIN FEED — full-height scrollable output area
             ══════════════════════════════════════════════════════════════════ */}
-        {/* ── Fusion page ───────────────────────────────────────────────── */}
-        {viewMode === 'fusion' && (
-          <div className="lk-fusion-view">
-            <LogikFusionPanel
-              sourceRepo={{ owner: repo2Owner, repo: repo2Name, branch: repo2Branch }}
-              targetRepo={{ owner: repoOwner,  repo: repoName,  branch: baseBranch  }}
-              onRunRitual={prompt => { agentSession.run(prompt); setViewMode('chat'); setActiveTab('activity') }}
-              isRunning={agentSession.isAgentRunning}
-              shadowStatus2={shadowStatus2}
-              repo2Owner={repo2Owner}   setRepo2Owner={setRepo2Owner}
-              repo2Name={repo2Name}     setRepo2Name={setRepo2Name}
-              repo2Branch={repo2Branch} setRepo2Branch={setRepo2Branch}
-              repo2Token={repo2Token}   setRepo2Token={setRepo2Token}
-              hasBothRepos={hasBothRepos}
+        {/* ── Self-Improve page (full-screen view mode) ─────────────────── */}
+        {viewMode === 'self-improve' && (
+          <div className="lk-si-view">
+            <LogikSelfImprovePanel
+              mainRepo={{ token: githubToken, owner: repoOwner, repo: repoName, branch: baseBranch }}
+              modelConfig={activeModel}
+              webSearchApiKey={webSearchApiKey}
+              onActiveChange={setSelfImproveActive}
             />
           </div>
         )}
 
-        {viewMode !== 'fusion' && <div className="lk-feed">
+        {viewMode !== 'self-improve' && <div className="lk-feed">
 
           {/* ── Feed status strip: plan, amplifier, remediation ──────────── */}
           {(isAmplifying || amplifierDecisions.length > 0 || remediationStatus || isPlanning || filePlan.length > 0) && (
@@ -1916,25 +1879,19 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
             <LogikModularTools />
           )}
 
-          {effectiveActiveTab === 'fusion' && hasBothRepos && (
-            <LogikFusionPanel
-              sourceRepo={{ owner: repo2Owner, repo: repo2Name, branch: repo2Branch }}
-              targetRepo={{ owner: repoOwner,  repo: repoName,  branch: baseBranch  }}
-              onRunRitual={prompt => { agentSession.run(prompt); setActiveTab('activity'); setViewMode('chat') }}
-              isRunning={agentSession.isAgentRunning}
-              shadowStatus2={shadowStatus2}
-              repo2Owner={repo2Owner}   setRepo2Owner={setRepo2Owner}
-              repo2Name={repo2Name}     setRepo2Name={setRepo2Name}
-              repo2Branch={repo2Branch} setRepo2Branch={setRepo2Branch}
-              repo2Token={repo2Token}   setRepo2Token={setRepo2Token}
-              hasBothRepos={hasBothRepos}
+          {effectiveActiveTab === 'self-improve' && (
+            <LogikSelfImprovePanel
+              mainRepo={{ token: githubToken, owner: repoOwner, repo: repoName, branch: baseBranch }}
+              modelConfig={activeModel}
+              webSearchApiKey={webSearchApiKey}
+              onActiveChange={setSelfImproveActive}
             />
           )}
 
           </div>{/* end lk-feed-output */}
-        </div>}{/* end lk-feed (viewMode !== 'fusion') */}
+        </div>}{/* end lk-feed (viewMode !== 'self-improve') */}
 
-        {viewMode !== 'fusion' && <>{/* ══════════════════════════════════════════════════
+        {viewMode !== 'self-improve' && <>{/* ══════════════════════════════════════════════════
             BOTTOM INPUT BAR — prompt + controls (Claude Code style)
             ══════════════════════════════════════════════════════════════════ */}
         <div className="lk-input-bar">
