@@ -3677,3 +3677,384 @@ kbd {
   border: 1px solid color-mix(in srgb, var(--lk-accent) 30%, transparent);
   letter-spacing: 0.03em;
 }
+
+/* =============================================================================
+   TOOLS PANE - Shell Commands + Modular Tool System
+   ============================================================================= */
+
+/* ── Shared small button ───────────────────────────────────────────────────── */
+.lk-btn--small {
+  padding: 4px 9px;
+  font-size: 0.74rem;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--lk-muted);
+  border: 1px solid var(--lk-border-soft);
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 500;
+  transition: background 0.13s, color 0.13s, border-color 0.13s;
+}
+.lk-btn--small:hover:not(:disabled) {
+  background: var(--lk-accent-dim);
+  color: var(--lk-accent);
+  border-color: color-mix(in srgb, var(--lk-accent) 35%, transparent);
+}
+.lk-btn--small:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Shell-command tool button ─────────────────────────────────────────────── */
+.lk-btn--tool {
+  background: transparent;
+  color: var(--lk-fg);
+  border: 1px solid var(--lk-border);
+  padding: 6px 12px;
+  font-size: 0.78rem;
+  font-family: inherit;
+  font-weight: 500;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.13s, border-color 0.13s;
+}
+.lk-btn--tool:hover:not(:disabled) {
+  background: var(--lk-accent-dim);
+  border-color: color-mix(in srgb, var(--lk-accent) 40%, transparent);
+}
+.lk-btn--tool:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Danger button ─────────────────────────────────────────────────────────── */
+.lk-btn--danger {
+  color: var(--lk-danger);
+  border-color: rgba(255, 107, 107, 0.3);
+}
+.lk-btn--danger:hover:not(:disabled) {
+  background: var(--lk-danger-bg);
+  border-color: var(--lk-danger);
+}
+
+/* ── Test button states ────────────────────────────────────────────────────── */
+.lk-btn--test { min-width: 56px; }
+.lk-btn--running { opacity: 0.7; cursor: wait; }
+.lk-btn--pass {
+  color: #4caf50;
+  border-color: rgba(76, 175, 80, 0.35);
+  background: rgba(76, 175, 80, 0.07);
+}
+.lk-btn--fail {
+  color: var(--lk-danger);
+  border-color: rgba(255, 107, 107, 0.35);
+  background: var(--lk-danger-bg);
+}
+
+/* ── Inner tab bar (Shell / Modules) ───────────────────────────────────────── */
+.lk-tools-pane-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 8px 12px 0;
+  border-bottom: 1px solid var(--lk-border-soft);
+  flex-shrink: 0;
+}
+.lk-tools-pane-tab {
+  padding: 5px 14px 7px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  font-family: inherit;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--lk-muted);
+  cursor: pointer;
+  transition: color 0.13s, border-color 0.13s;
+  margin-bottom: -1px;
+}
+.lk-tools-pane-tab:hover { color: var(--lk-fg); }
+.lk-tools-pane-tab--active {
+  color: var(--lk-accent);
+  border-bottom-color: var(--lk-accent);
+}
+
+/* ── Shell controls + output ───────────────────────────────────────────────── */
+.lk-tools-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  flex-shrink: 0;
+}
+.lk-tools-warn {
+  font-size: 0.74rem;
+  color: var(--lk-muted);
+  padding: 6px 10px;
+  background: color-mix(in srgb, var(--lk-bg) 60%, transparent);
+  border: 1px solid var(--lk-border-soft);
+  border-radius: 5px;
+}
+.lk-tools-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.lk-tools-custom {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.lk-tools-output {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 12px 12px;
+}
+.lk-tools-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--lk-muted);
+  font-size: 0.82rem;
+}
+.lk-tool-entry--shell {
+  margin-bottom: 10px;
+  border: 1px solid var(--lk-border-soft);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.lk-tool-header {
+  font-size: 0.72rem;
+  color: var(--lk-muted);
+  padding: 5px 10px;
+  background: color-mix(in srgb, var(--lk-bg) 70%, transparent);
+  border-bottom: 1px solid var(--lk-border-soft);
+}
+.lk-tool-output {
+  font-size: 0.78rem;
+  padding: 8px 10px;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--lk-fg);
+  background: transparent;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+/* ── Modular Tools: Drop Zone ──────────────────────────────────────────────── */
+.lk-modular-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+.lk-drop-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px 16px;
+  border: 2px dashed var(--lk-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--lk-bg) 60%, transparent);
+  transition: border-color 0.15s, background 0.15s;
+  cursor: default;
+  text-align: center;
+  flex-shrink: 0;
+  margin-bottom: 12px;
+}
+.lk-drop-zone--active {
+  border-color: var(--lk-accent);
+  background: var(--lk-accent-dim);
+}
+.lk-drop-icon {
+  font-size: 28px;
+  color: var(--lk-accent);
+  line-height: 1;
+}
+.lk-drop-primary {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--lk-fg);
+}
+.lk-drop-secondary {
+  font-size: 0.76rem;
+  color: var(--lk-muted);
+}
+.lk-drop-secondary code {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.74rem;
+  padding: 1px 4px;
+  background: color-mix(in srgb, var(--lk-accent) 12%, transparent);
+  border-radius: 3px;
+  color: var(--lk-accent);
+}
+.lk-drop-browse {
+  margin-top: 4px;
+}
+
+/* ── Install feedback ──────────────────────────────────────────────────────── */
+.lk-install-msg {
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  margin-bottom: 10px;
+  flex-shrink: 0;
+}
+.lk-install-msg--success {
+  background: rgba(76, 175, 80, 0.1);
+  border: 1px solid rgba(76, 175, 80, 0.3);
+  color: #4caf50;
+}
+.lk-install-msg--error {
+  background: var(--lk-danger-bg);
+  border: 1px solid rgba(255, 107, 107, 0.3);
+  color: var(--lk-danger);
+}
+
+/* ── Filter tabs ───────────────────────────────────────────────────────────── */
+.lk-tool-filters {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.lk-tool-filter-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  font-size: 0.74rem;
+  font-weight: 500;
+  font-family: inherit;
+  background: transparent;
+  border: 1px solid var(--lk-border-soft);
+  border-radius: 20px;
+  color: var(--lk-muted);
+  cursor: pointer;
+  transition: all 0.13s;
+}
+.lk-tool-filter-btn:hover { color: var(--lk-fg); border-color: var(--lk-border); }
+.lk-tool-filter-btn--active {
+  background: var(--lk-accent-dim);
+  color: var(--lk-accent);
+  border-color: color-mix(in srgb, var(--lk-accent) 40%, transparent);
+}
+.lk-tool-filter-count {
+  font-size: 0.68rem;
+  background: color-mix(in srgb, currentColor 15%, transparent);
+  border-radius: 10px;
+  padding: 1px 5px;
+  font-weight: 600;
+}
+
+/* ── Tool list ─────────────────────────────────────────────────────────────── */
+.lk-tool-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+.lk-tool-entry {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto;
+  gap: 4px 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--lk-border-soft);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--lk-bg) 55%, transparent);
+  transition: border-color 0.13s;
+}
+.lk-tool-entry:hover { border-color: var(--lk-border); }
+.lk-tool-entry--user {
+  border-color: color-mix(in srgb, var(--lk-accent) 20%, transparent);
+}
+.lk-tool-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  grid-column: 1;
+  grid-row: 1;
+}
+.lk-tool-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  grid-column: 2;
+  grid-row: 1;
+  flex-shrink: 0;
+}
+.lk-test-result {
+  font-size: 0.72rem;
+  padding: 3px 8px;
+  border-radius: 4px;
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+.lk-test-result--pass {
+  background: rgba(76, 175, 80, 0.08);
+  color: #4caf50;
+}
+.lk-test-result--fail {
+  background: var(--lk-danger-bg);
+  color: var(--lk-danger);
+}
+
+/* ── Tool entry header row ─────────────────────────────────────────────────── */
+.lk-tool-header-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.lk-tool-name {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--lk-fg);
+}
+.lk-tool-version {
+  font-size: 0.7rem;
+  color: var(--lk-muted);
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+.lk-tool-desc {
+  font-size: 0.76rem;
+  color: var(--lk-muted);
+  line-height: 1.45;
+}
+.lk-tool-author {
+  font-size: 0.68rem;
+  color: color-mix(in srgb, var(--lk-muted) 70%, transparent);
+}
+
+/* ── Category + user badges ────────────────────────────────────────────────── */
+.lk-tool-category {
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.lk-tool-category--coding  { background: rgba(116, 192, 252, 0.12); color: #74c0fc; }
+.lk-tool-category--utility { background: rgba(154, 230, 180, 0.12); color: #9ae6b4; }
+.lk-tool-category--analysis { background: rgba(246, 173, 85, 0.12); color: #f6ad55; }
+
+.lk-tool-badge { font-size: 0.65rem; font-weight: 700; padding: 1px 6px; border-radius: 10px; letter-spacing: 0.04em; }
+.lk-tool-badge--user {
+  background: color-mix(in srgb, var(--lk-accent) 15%, transparent);
+  color: var(--lk-accent);
+  border: 1px solid color-mix(in srgb, var(--lk-accent) 30%, transparent);
+}
+
+/* ── Footer ────────────────────────────────────────────────────────────────── */
+.lk-tool-list-footer {
+  padding-top: 10px;
+  font-size: 0.72rem;
+  color: var(--lk-muted);
+  text-align: center;
+  flex-shrink: 0;
+}
+.lk-tool-template-link {
+  color: var(--lk-accent);
+  text-decoration: none;
+}
+.lk-tool-template-link:hover { text-decoration: underline; }
