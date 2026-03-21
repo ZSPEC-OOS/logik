@@ -40,7 +40,6 @@ import LogikDiffViewer   from './logik/LogikDiffViewer'
 import LogikTerminal     from './logik/LogikTerminal'
 import LogikToolsPane    from './logik/LogikToolsPane'
 import LogikSettings     from './logik/LogikSettings'
-import LogikSelfImprovePanel from './logik/LogikSelfImprovePanel'
 import LogikModularTools from './logik/LogikModularTools'
 import './Logik.css'
 
@@ -160,7 +159,6 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
   const [repoName,       setRepoName]       = useState(saved.repoName    || '')
   const [baseBranch,     setBaseBranch]     = useState(saved.baseBranch  || 'main')
   const [githubToken,    setGithubToken]    = useState(saved.githubToken || '')
-  const [selfImproveActive, setSelfImproveActive] = useState(false)
   const [doCreateBranch, setDoCreateBranch] = useState(true)
   const [doCreatePR,     setDoCreatePR]     = useState(true)
   const [dryRun,         setDryRun]         = useState(false)
@@ -188,6 +186,8 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
   const [enableThinking,  setEnableThinking]  = useState(saved.enableThinking ?? false)
   // planMode: agent reads only — no file writes; useful for analysis and review
   const [planMode,        setPlanMode]        = useState(false)
+  // planApproval: pending plan awaiting user approve/reject/modify
+  const [planApproval,    setPlanApproval]    = useState(null) // null | { task, summary }
   // webSearchApiKey: Tavily API key for agent web_search tool
   const [webSearchApiKey, setWebSearchApiKey] = useState(() => loadSearchKey())
 
@@ -206,7 +206,7 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
   // ── Output ─────────────────────────────────────────────────────────────
   const [activeTab,  setActiveTab]  = useState('code')
   // viewMode — top-level toggle between the chat/plan view and the code view
-  const [viewMode,   setViewMode]   = useState('chat')  // 'chat' | 'code' | 'self-improve'
+  const [viewMode,   setViewMode]   = useState('chat')  // 'chat' | 'code'
   const [gitStatus,  setGitStatus]  = useState(null)
   const [prResult,   setPrResult]   = useState(null)
   const [workflows,  setWorkflows]  = useState([])
@@ -369,6 +369,7 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
     onSetActiveTab:  setActiveTab,
     onSetError:      setError,
     onPromptClear,
+    onPlanDone: (task, summary) => setPlanApproval({ task, summary }),
   })
 
   // ── Cost estimate (memoized) ───────────────────────────────────────────
@@ -828,7 +829,6 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
           const hasDiffs = planRef.current.some(e => e.diffText?.trim())
           setActiveTab(hasDiffs ? 'diff' : 'code')
           setViewMode('code')
-          setPrompt('')
           const he = { id: Date.now().toString(), prompt: userMsg.slice(0, 100), filePath: planRef.current[0]?.path || '', timestamp: new Date().toISOString() }
           const updated = [he, ...history]
           setHistory(updated)
@@ -846,6 +846,7 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
       setIsPlanning(false)
       setIsAmplifying(false)
       setIsGenTests(false)   // safety net — ensures it can never stay stuck
+      setPrompt('')
     }
   }, [
     prompt, models, activeModelId, conversation, filePlan,
@@ -1419,7 +1420,7 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
       e.preventDefault()
       if (!isGenerating && !isPushing && !agentSession.isAgentRunning) {
         if (generatedCode && refinementPrompt.trim()) handleRefine()
-        else if (hasGithub) agentSession.run(prompt)
+        else if (hasGithub) agentSession.run(prompt, conversation.slice(-10))
         else handleGenerate()
       }
     }
@@ -1440,7 +1441,6 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
     { id: 'terminal', label: 'Terminal ●', hidden: !bridgeAvailable },
     { id: 'tools',    label: 'Tools ●',    hidden: !bridgeAvailable },
     { id: 'modules',      label: '⊕ Modules' },
-    { id: 'self-improve', label: '⟳ Self-Improve' },
   ]
   const visibleTabs = tabs.filter(t => !t.hidden)
   // In chat mode always show the activity feed regardless of which tab is stored.
@@ -1512,11 +1512,6 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
                   onClick={() => { setViewMode('code'); if (activeTab === 'activity') setActiveTab('code') }}
                   title="Code — see the generated files"
                 >Code</button>
-                <button
-                  className={`lk-view-toggle-btn${viewMode === 'self-improve' ? ' lk-view-toggle-btn--active' : ''}`}
-                  onClick={() => setViewMode('self-improve')}
-                  title="Self-Improve — attach a repo and run autonomous improvement cycles"
-                >⟳ Self-Improve</button>
               </div>
 
               {turnCount > 0 && (
@@ -1603,19 +1598,29 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
         {/* ══════════════════════════════════════════════════════════════════
             MAIN FEED — full-height scrollable output area
             ══════════════════════════════════════════════════════════════════ */}
-        {/* ── Self-Improve page (full-screen view mode) ─────────────────── */}
-        {viewMode === 'self-improve' && (
-          <div className="lk-si-view">
-            <LogikSelfImprovePanel
-              mainRepo={{ token: githubToken, owner: repoOwner, repo: repoName, branch: baseBranch }}
-              modelConfig={activeModel}
-              webSearchApiKey={webSearchApiKey}
-              onActiveChange={setSelfImproveActive}
-            />
-          </div>
-        )}
+        <div className="lk-feed">
 
-        {viewMode !== 'self-improve' && <div className="lk-feed">
+          {/* ── Plan approval gate ────────────────────────────────────────── */}
+          {planApproval && (
+            <div className="lk-plan-approval">
+              <div className="lk-plan-approval-hd">📋 Plan ready — approve to execute, modify to revise, or reject to cancel</div>
+              {planApproval.summary && (
+                <div className="lk-plan-approval-summary">{planApproval.summary.slice(0, 600)}{planApproval.summary.length > 600 ? '…' : ''}</div>
+              )}
+              <div className="lk-plan-approval-actions">
+                <button className="lk-btn lk-btn--success" onClick={() => {
+                  const t = planApproval.task
+                  setPlanApproval(null)
+                  agentSession.run(t, conversation.slice(-10), { forceBuildMode: true })
+                }}>✓ Approve &amp; Execute</button>
+                <button className="lk-btn" onClick={() => {
+                  setPrompt(planApproval.task)
+                  setPlanApproval(null)
+                }}>✎ Modify</button>
+                <button className="lk-btn lk-btn--danger" onClick={() => setPlanApproval(null)}>✗ Reject</button>
+              </div>
+            </div>
+          )}
 
           {/* ── Feed status strip: plan, amplifier, remediation ──────────── */}
           {(isAmplifying || amplifierDecisions.length > 0 || remediationStatus || isPlanning || filePlan.length > 0) && (
@@ -1713,6 +1718,7 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
               isPushing={isPushing}
               feedRef={activityFeedRef}
               onViewCode={() => { setActiveTab('code'); setViewMode('code') }}
+              conversation={conversation}
             />
           )}
 
@@ -1879,19 +1885,10 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
             <LogikModularTools />
           )}
 
-          {effectiveActiveTab === 'self-improve' && (
-            <LogikSelfImprovePanel
-              mainRepo={{ token: githubToken, owner: repoOwner, repo: repoName, branch: baseBranch }}
-              modelConfig={activeModel}
-              webSearchApiKey={webSearchApiKey}
-              onActiveChange={setSelfImproveActive}
-            />
-          )}
-
           </div>{/* end lk-feed-output */}
-        </div>}{/* end lk-feed (viewMode !== 'self-improve') */}
+        </div>{/* end lk-feed */}
 
-        {viewMode !== 'self-improve' && <>{/* ══════════════════════════════════════════════════
+        <>{/* ══════════════════════════════════════════════════
             BOTTOM INPUT BAR — prompt + controls (Claude Code style)
             ══════════════════════════════════════════════════════════════════ */}
         <div className="lk-input-bar">
@@ -1985,7 +1982,7 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
                   {/* Single Send button — agent when GitHub connected, generate otherwise */}
                   <button
                     className="lk-btn lk-btn--send"
-                    onClick={() => hasGithub ? agentSession.run(prompt) : handleGenerate()}
+                    onClick={() => hasGithub ? agentSession.run(prompt, conversation.slice(-10)) : handleGenerate()}
                     disabled={!prompt.trim() || agentSession.isAgentRunning || isGenerating}
                   >
                     <span className="lk-btn-icon">▶</span>
@@ -2013,7 +2010,7 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
             </div>
           </div>{/* end lk-input-actions */}
         </div>{/* end lk-input-bar */}
-        </>}
+        </>
 
       </div>{/* end lk-main */}
     </div>

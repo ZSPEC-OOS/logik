@@ -158,6 +158,7 @@ export async function runAgentLoop({
   modelConfig,
   onEvent,
   signal,
+  conversationHistory,  // optional prior turns [{role,content}] for context continuity
 }) {
   // Detect once â avoids repeated URL-sniffing in every turn.
   // Supports proxy setups by checking the provider field if present, then URL.
@@ -174,6 +175,9 @@ export async function runAgentLoop({
     ...(isAnthropic
       ? []   // Anthropic: pass systemPrompt via the `system` field below
       : [{ role: 'system', content: systemPrompt }]),
+    ...(conversationHistory?.length
+      ? conversationHistory   // prior session turns for context continuity
+      : []),
     { role: 'user', content: task },
   ]
 
