@@ -465,7 +465,7 @@ const LogikSettings = memo(function LogikSettings({
             { id: 'midnight', name: 'Midnight', bg: '#0b0f1a', accent: '#38bdf8' },
             { id: 'obsidian', name: 'Obsidian', bg: '#07091A', accent: '#7B82D8' },
             { id: 'forest',   name: 'Forest',   bg: '#0d1f17', accent: '#34d399' },
-            { id: 'crimson',  name: 'Crimson',  bg: '#160e0e', accent: '#f87171' },
+            { id: 'spectrum', name: 'Spectrum', bg: '#09081a', accent: '#ff4da3' },
           ].map(t => (
             <button
               key={t.id}
