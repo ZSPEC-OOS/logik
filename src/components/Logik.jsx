@@ -42,6 +42,7 @@ import LogikTerminal     from './logik/LogikTerminal'
 import LogikToolsPane    from './logik/LogikToolsPane'
 import LogikSettings     from './logik/LogikSettings'
 import LogikModularTools from './logik/LogikModularTools'
+import logikLogo         from '../../LOGIKlogo.png'
 import './Logik.css'
 
 // ─── Persistence ────────────────────────────────────────────────────────────
@@ -1503,8 +1504,7 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
         <div className="lk-topbar">
           <>
 
-              <span className="lk-brand-icon">◈</span>
-              <span className="lk-brand-name">LOGIK</span>
+              <img className="lk-brand-logo" src={logikLogo} alt="LOGIK" />
               <span className="lk-brand-sub">AI Coding Assistant</span>
 
               <div className="lk-view-toggle" role="group" aria-label="View mode">

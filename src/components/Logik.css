@@ -186,35 +186,35 @@
   --lk-shadow-sm:   0 2px 12px rgba(0, 0, 0, 0.40);
 }
 
-/* ── Theme: Crimson (dark charcoal + warm red) */
-.lk-root.lk-theme-crimson {
-  --lk-bg:          #160e0e;
-  --lk-surface:     #201414;
-  --lk-surface-2:   #2a1c1c;
-  --lk-surface-3:   #342424;
-  --lk-surface-4:   #3e2c2c;
-  --lk-border:      #4a3030;
-  --lk-border-soft: #2e1e1e;
-  --lk-border-glow: rgba(248, 113, 113, 0.28);
-  --lk-text:        #fef2f2;
-  --lk-text-2:      #f1a0a0;
-  --lk-text-muted:  #7a4848;
-  --lk-accent:      #f87171;
-  --lk-accent-h:    #fca5a5;
-  --lk-accent-dim:  rgba(248, 113, 113, 0.12);
-  --lk-accent-glow: rgba(248, 113, 113, 0.22);
-  --lk-violet:      #c084fc;
-  --lk-violet-dim:  rgba(192, 132, 252, 0.10);
-  --lk-silver:      #fecaca;
-  --lk-silver-dim:  rgba(254, 202, 202, 0.07);
-  --lk-success:     #4ade80;
-  --lk-success-bg:  rgba(74, 222, 128, 0.08);
-  --lk-danger:      #fb923c;
-  --lk-danger-bg:   rgba(251, 146, 60, 0.08);
-  --lk-warn:        #fbbf24;
-  --lk-grad-bg:     #160e0e;
-  --lk-grad-panel:  #201414;
-  --lk-grad-glow:   radial-gradient(ellipse 60% 35% at 50% 0%, rgba(248, 113, 113, 0.04) 0%, transparent 70%);
+/* ── Theme: Spectrum (LOGIK logo-inspired neon blend) */
+.lk-root.lk-theme-spectrum {
+  --lk-bg:          #09081a;
+  --lk-surface:     #10102a;
+  --lk-surface-2:   #17173a;
+  --lk-surface-3:   #1f1f4a;
+  --lk-surface-4:   #28265a;
+  --lk-border:      #35336a;
+  --lk-border-soft: #1a1a40;
+  --lk-border-glow: rgba(255, 77, 163, 0.30);
+  --lk-text:        #eef1ff;
+  --lk-text-2:      #bbc6f8;
+  --lk-text-muted:  #7d88bc;
+  --lk-accent:      #ff4da3;
+  --lk-accent-h:    #ff78bf;
+  --lk-accent-dim:  rgba(255, 77, 163, 0.13);
+  --lk-accent-glow: rgba(255, 77, 163, 0.24);
+  --lk-violet:      #7568ff;
+  --lk-violet-dim:  rgba(117, 104, 255, 0.12);
+  --lk-silver:      #ffd168;
+  --lk-silver-dim:  rgba(255, 209, 104, 0.11);
+  --lk-success:     #a6ff38;
+  --lk-success-bg:  rgba(166, 255, 56, 0.10);
+  --lk-danger:      #ff6a39;
+  --lk-danger-bg:   rgba(255, 106, 57, 0.10);
+  --lk-warn:        #ffcc33;
+  --lk-grad-bg:     linear-gradient(160deg, #09081a 0%, #120b2d 42%, #1a0e23 100%);
+  --lk-grad-panel:  linear-gradient(180deg, #121132 0%, #0f0f28 100%);
+  --lk-grad-glow:   radial-gradient(ellipse 60% 35% at 50% 0%, rgba(255, 77, 163, 0.06) 0%, transparent 70%);
   --lk-shadow:      0 8px 32px rgba(0, 0, 0, 0.55);
   --lk-shadow-sm:   0 2px 12px rgba(0, 0, 0, 0.40);
 }
@@ -336,6 +336,12 @@
   font-weight: 700;
   letter-spacing: 0.10em;
   color: var(--lk-text);
+}
+
+.lk-brand-logo {
+  height: 18px;
+  width: auto;
+  display: block;
 }
 
 .lk-brand-sub {
