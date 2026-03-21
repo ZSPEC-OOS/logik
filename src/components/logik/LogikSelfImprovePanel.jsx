@@ -97,23 +97,7 @@ export default function LogikSelfImprovePanel({
     onActiveChange?.(phase === 'ready' || phase === 'indexing' || cycleState === 'running' || cycleState === 'paused')
   }, [phase, cycleState, onActiveChange])
 
-  // ── ShadowContext2 polling during indexing ────────────────────────────────
-  useEffect(() => {
-    if (phase !== 'indexing') return
-    const id = setInterval(() => {
-      const summary = shadowContext2.statusSummary?.() || ''
-      setIdxStatus(summary)
-      const total   = shadowContext2._fileIndex?.length || 0
-      const target  = shadowContext2._totalFiles   || total || 1
-      setIdxPct(Math.min(100, Math.round(total / target * 100)))
-      if (!shadowContext2.isIndexing) {
-        clearInterval(id)
-        setR2FileCount(shadowContext2._fileIndex?.length || 0)
-        setPhase('ready')
-      }
-    }, 800)
-    return () => clearInterval(id)
-  }, [phase])
+  // (no polling — progress is driven by the startIndexing callback in handleConnect)
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -156,7 +140,15 @@ export default function LogikSelfImprovePanel({
 
     setIdxStatus('Indexing repository…')
     shadowContext2.startIndexing(tok, r2Owner, r2Repo, r2Branch || 'main', () => {
-      setIdxStatus(shadowContext2.statusSummary?.() || '')
+      const summary   = shadowContext2.statusSummary?.() || ''
+      const fileCount = shadowContext2._fileIndex?.length || 0
+      const target    = shadowContext2._totalFiles || fileCount || 1
+      setIdxStatus(summary)
+      setIdxPct(shadowContext2.isIndexing ? Math.min(95, Math.round(fileCount / target * 100)) : 100)
+      if (!shadowContext2.isIndexing) {
+        setR2FileCount(fileCount)
+        setPhase('ready')
+      }
     })
   }, [r2Owner, r2Repo, r2Branch, r2Token, mainRepo])
 
