@@ -138,7 +138,7 @@ export default function LogikModularTools() {
   const CATEGORY_LABELS = { coding: 'Coding', utility: 'Utility', analysis: 'Analysis' }
 
   return (
-    <div className="lk-modular-tools">
+    <div className="lk-output lk-modular-tools">
 
       {/* ── Drop Zone ───────────────────────────────────────────────────────── */}
       <div
