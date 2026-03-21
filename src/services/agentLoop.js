@@ -110,7 +110,7 @@ function buildToolResultMessages(toolCalls, results, isAnthropic, rawAssistantCo
 // AGENT_KEEP_TURNS turn pairs.
 // When a diary is supplied and turns are actually dropped, injects a compact
 // digest (Claude Code /compact pattern) so the model retains session context.
-function pruneMessages(messages, diary = null) {
+function pruneMessages(messages, diary = null, isAnthropic = false) {
   const head = messages.slice(0, 2)
   const tail = messages.slice(2)
   const keep = AGENT_KEEP_TURNS * 2   // each turn = 1 assistant + 1 user
@@ -118,7 +118,16 @@ function pruneMessages(messages, diary = null) {
 
   // Turns are about to be dropped â inject a digest if we have one
   const droppedCount = Math.floor((tail.length - keep) / 2)
-  const trimmed = tail.slice(-keep)
+  let trimmed = tail.slice(-keep)
+
+  // OpenAI format: a tool-use turn is 1 assistant message + N role:'tool' messages.
+  // Slicing by a fixed count can cut mid-turn, leaving orphaned role:'tool' messages
+  // whose tool_call_id references a now-pruned assistant message — causing a 400 error.
+  // Fix: drop any leading role:'tool' messages that lost their assistant message.
+  if (!isAnthropic) {
+    const firstNonTool = trimmed.findIndex(m => m.role !== 'tool')
+    if (firstNonTool > 0) trimmed = trimmed.slice(firstNonTool)
+  }
 
   if (diary?.hasContent()) {
     const digestMsg = { role: 'user', content: diary.buildDigest(droppedCount) }
@@ -255,7 +264,7 @@ export async function runAgentLoop({
     const nextMessages = buildToolResultMessages(
       response.toolCalls, results, isAnthropic, response._raw,
     )
-    messages = pruneMessages([...messages, ...nextMessages], diary)
+    messages = pruneMessages([...messages, ...nextMessages], diary, isAnthropic)
 
     // ââ Loop detection ââââââââââââââââââââââââââââââââââââââââââââââââââââ
     const sig = toolSignature(response.toolCalls)
