@@ -2,6 +2,7 @@ import { memo } from 'react'
 
 // ─── LogikActivityFeed ────────────────────────────────────────────────────────
 // Renders the live activity log panel — the Claude Code-style operation feed.
+// Also renders prior conversation turns as chat bubbles above the activity log.
 const LogikActivityFeed = memo(function LogikActivityFeed({
   activityLog,
   isAgentRunning,
@@ -10,11 +11,29 @@ const LogikActivityFeed = memo(function LogikActivityFeed({
   isPushing,
   feedRef,
   onViewCode,
+  conversation,
 }) {
   return (
     <div className="lk-output lk-activity-output" style={{ display: 'flex', flexDirection: 'column' }}>
       <div className="lk-activity-feed" ref={feedRef}>
-        {activityLog.length === 0 ? (
+
+        {/* ── Chat history bubbles ─────────────────────────────────────── */}
+        {conversation?.length > 0 && (
+          <div className="lk-chat-history">
+            {conversation.map((msg, i) => (
+              <div key={i} className={`lk-chat-msg lk-chat-msg--${msg.role}`}>
+                <span className="lk-chat-label">{msg.role === 'user' ? 'You' : 'Assistant'}</span>
+                <div className="lk-chat-bubble">
+                  {typeof msg.content === 'string'
+                    ? msg.content.slice(0, 800) + (msg.content.length > 800 ? '…' : '')
+                    : '[content]'}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {activityLog.length === 0 && !conversation?.length ? (
           <div className="lk-activity-empty">No activity yet — generate code to see live operations.</div>
         ) : (
           activityLog.map(entry => (

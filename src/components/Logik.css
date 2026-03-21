@@ -1598,6 +1598,52 @@ kbd {
   gap: 6px;
   padding: 3px 0;
 }
+.lk-plan-approval {
+  margin: 10px 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--lk-accent-glow);
+  border-radius: 8px;
+  background: var(--lk-accent-dim);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lk-plan-approval-hd {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--lk-accent-h);
+}
+.lk-plan-approval-summary {
+  font-size: 0.72rem;
+  color: var(--lk-text-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+  max-height: 140px;
+  overflow-y: auto;
+  padding: 6px 8px;
+  background: var(--lk-surface-2);
+  border-radius: 5px;
+  border: 1px solid var(--lk-border);
+}
+.lk-plan-approval-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.lk-btn--success {
+  background: var(--lk-success-bg);
+  border-color: var(--lk-success);
+  color: var(--lk-success);
+}
+.lk-btn--success:hover { background: rgba(81, 207, 102, 0.18); }
+.lk-btn--danger {
+  background: var(--lk-danger-bg);
+  border-color: var(--lk-danger);
+  color: var(--lk-danger);
+}
+.lk-btn--danger:hover { background: rgba(255, 107, 107, 0.18); }
+
 .lk-amplifier-panel {
   margin-top: 4px;
   padding: 7px 10px;
@@ -2479,6 +2525,58 @@ kbd {
 .lk-activity-stream .lk-activity-msg {
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* ── Chat bubbles ─────────────────────────────────────────────────── */
+.lk-chat-history {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--lk-border-soft);
+  margin-bottom: 12px;
+}
+.lk-chat-msg {
+  display: flex;
+  flex-direction: column;
+  max-width: 82%;
+}
+.lk-chat-msg--user {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+.lk-chat-msg--assistant {
+  align-self: flex-start;
+  align-items: flex-start;
+}
+.lk-chat-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--lk-text-muted);
+  margin-bottom: 3px;
+  padding: 0 4px;
+}
+.lk-chat-bubble {
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.lk-chat-msg--user .lk-chat-bubble {
+  background: var(--lk-accent-dim);
+  border: 1px solid var(--lk-accent-glow);
+  color: var(--lk-text);
+  border-bottom-right-radius: 3px;
+}
+.lk-chat-msg--assistant .lk-chat-bubble {
+  background: var(--lk-surface-2);
+  border: 1px solid var(--lk-border);
+  color: var(--lk-text-2);
+  border-bottom-left-radius: 3px;
 }
 
 /* ── LOGIK.md editor ─────────────────────────────────────────────── */
