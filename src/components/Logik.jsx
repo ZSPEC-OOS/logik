@@ -231,8 +231,6 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
 
   // ── Output ─────────────────────────────────────────────────────────────
   const [activeTab,  setActiveTab]  = useState('code')
-  // viewMode — top-level toggle between the chat/plan view and the code view
-  const [viewMode,   setViewMode]   = useState('chat')  // 'chat' | 'code'
   const [gitStatus,  setGitStatus]  = useState(null)
   const [prResult,   setPrResult]   = useState(null)
   const [workflows,  setWorkflows]  = useState([])
@@ -280,9 +278,10 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
   const [isPushing,    setIsPushing]    = useState(false)
   const [pushStep,     setPushStep]     = useState('')
   const [error,        setError]        = useState('')
-  const [copied,       setCopied]       = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [historyOpen,  setHistoryOpen]  = useState(false)
+  const [chatHistoryOpen, setChatHistoryOpen] = useState(false)
+  const [modulesOpen, setModulesOpen] = useState(false)
   const [sourceOpen,   setSourceOpen]   = useState(false)
   const [history,      setHistory]      = useState(loadHistory)
   // ── Phase 4: ShadowContext ─────────────────────────────────────────────
@@ -597,7 +596,7 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
       setGitStatus(null); setPrResult(null); setSandboxOutput([])
       // Fresh activity log for each new generation run
       clearActivity()
-      setActiveTab('activity'); setViewMode('chat')
+      setActiveTab('code')
     }
 
     const ctrl = new AbortController()
@@ -663,7 +662,7 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
         setConversation(prev => [...prev, { role: 'user', content: effectiveMsg }, { role: 'assistant', content: finalCode }])
         setTurnCount(t => t + 1)
         setRefinementPrompt('')
-        setActiveTab('code'); setViewMode('code')
+        setActiveTab('code')
 
       } else {
         // ── First-shot: plan → hydrate → generate each file ──────────────
@@ -868,7 +867,6 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
           // Auto-switch to Diff tab when diffs are available (surface review naturally)
           const hasDiffs = planRef.current.some(e => e.diffText?.trim())
           setActiveTab(hasDiffs ? 'diff' : 'code')
-          setViewMode('code')
           const he = { id: Date.now().toString(), prompt: userMsg.slice(0, 100), filePath: planRef.current[0]?.path || '', timestamp: new Date().toISOString() }
           const updated = [he, ...history]
           setHistory(updated)
@@ -993,7 +991,7 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
     setIsRunningPostPushTests(false)
     const passed = out.includes('Tests:') && !out.includes('failed')
     logActivity('test', passed ? '⊛ Tests passed' : '⊛ Tests failed — see output', out.slice(-300))
-    setActiveTab('activity'); setViewMode('chat')
+    setActiveTab('code')
   }, [bridgeAvailable, callExecBridgeStream, logActivity])
 
   // ── Reset conversation ──────────────────────────────────────────────────
@@ -1012,7 +1010,7 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
     setError('')
     setAmplifierDecisions([])
     setRemediationStatus(null)
-    setActiveTab('code'); setViewMode('code')
+    setActiveTab('code')
   }, [resetConversation, clearActivity])
 
   // ── Abort ───────────────────────────────────────────────────────────────
@@ -1084,12 +1082,6 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
     }
   }, [hasGithub, workflows, githubToken, repoOwner, repoName, baseBranch, logActivity, updateActivity])
 
-  useEffect(() => {
-    if (activeTab === 'status' && hasGithub) {
-      loadWorkflows()
-    }
-  }, [activeTab, hasGithub, loadWorkflows])
-
   // ─────────────────────────────────────────────────────────────────────────
   // ENHANCEMENT 7 — JS sandbox execution
   // ─────────────────────────────────────────────────────────────────────────
@@ -1098,7 +1090,6 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
     const isPython = language === 'python'
     setIsRunning(true)
     setSandboxOutput([{ level: 'info', text: isPython ? '▶ Loading Python runtime (Pyodide)…' : '▶ Running in isolated sandbox…' }])
-    setActiveTab('run'); setViewMode('code')
 
     const iframe = sandboxRef.current
     if (!iframe) { setIsRunning(false); return }
@@ -1130,7 +1121,6 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
     const isPython = language === 'python'
     setIsRunningTests(true)
     setSandboxOutput([{ level: 'info', text: isPython ? '▶ Loading Python runtime (Pyodide)…' : '▶ Running tests in isolated sandbox…' }])
-    setActiveTab('run'); setViewMode('code')
 
     const iframe = sandboxRef.current
     if (!iframe) { setIsRunningTests(false); return }
@@ -1304,7 +1294,7 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
     setError('')
     setIsPushing(true)
     setPrResult(null)
-    setActiveTab('activity'); setViewMode('chat')
+    setActiveTab('code')
 
     const steps = []
     const log = (msg, ok = true) => { steps.push({ msg, ok }); setGitStatus([...steps]) }
@@ -1450,11 +1440,6 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
     }
   }
 
-  const handleCopy = useCallback(() => {
-    if (!generatedCode) return
-    navigator.clipboard.writeText(generatedCode).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000) })
-  }, [generatedCode])
-
   const handleKeyDown = e => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
       e.preventDefault()
@@ -1469,25 +1454,7 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
   const busy = isGenerating || isPushing
 
   // ── Tab config ──────────────────────────────────────────────────────────
-  const activeActivityCount = activityLog.filter(e => e.status === 'active').length
-
-  const tabs = [
-    { id: 'activity', label: activeActivityCount > 0 ? `Activity ●` : `Activity${activityLog.length ? ` (${activityLog.length})` : ''}`, hidden: activityLog.length === 0 },
-    { id: 'code',   label: 'Generated Code' },
-    { id: 'tests',  label: `Tests${isGenTests ? ' …' : testCode ? ' ✓' : ''}`, hidden: !generateTests && !testCode },
-    { id: 'diff',   label: `Diff${patchEdits.length ? ` (${patchEdits.length})` : ''}`, hidden: !diffText },
-    { id: 'status', label: 'Git Status' },
-    { id: 'run',    label: '▶ Run', hidden: !generatedCode },
-    { id: 'terminal', label: 'Terminal ●', hidden: !bridgeAvailable },
-    { id: 'tools',    label: 'Tools ●',    hidden: !bridgeAvailable },
-    { id: 'modules',      label: '⊕ Modules' },
-  ]
-  const visibleTabs = tabs.filter(t => !t.hidden)
-  // In chat mode always show the activity feed regardless of which tab is stored.
-  // In code mode use the stored tab (or fall back to 'code').
-  const effectiveActiveTab = viewMode === 'chat'
-    ? 'activity'
-    : (visibleTabs.find(t => t.id === activeTab) ? activeTab : (visibleTabs[0]?.id || 'code'))
+  const effectiveActiveTab = 'code'
 
   // ══════════════════════════════════════════════════════════════════════════
   // ── Fine-tune filter string ────────────────────────────────────────────
@@ -1521,6 +1488,16 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
             setHistoryOpen(false)
             setLogikMdDraft(shadowContext.logikMd || '')
           }} title="Settings">⚙</button>
+        <button
+          className="lk-sidebar-btn"
+          onClick={handleReset}
+          title="New Chat"
+        >＋</button>
+        <button
+          className={`lk-sidebar-btn${chatHistoryOpen ? ' lk-sidebar-btn--on' : ''}`}
+          onClick={() => setChatHistoryOpen(v => !v)}
+          title="Chat History"
+        >💬</button>
         <div className="lk-sidebar-spacer" />
         {shadowStatus && (
           <div className={`lk-sidebar-shadow${shadowContext.isIndexing ? ' lk-sidebar-shadow--pulse' : ' lk-sidebar-shadow--ready'}`}
@@ -1557,18 +1534,18 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
               <div
                 className="lk-view-toggle"
                 role="group"
-                aria-label="View mode"
+                aria-label="Execution mode"
                 style={{ transform: `translate(${toggleOffsetX}px, ${toggleOffsetY}px)` }}
               >
                 <button
-                  className={`lk-view-toggle-btn${viewMode === 'chat' ? ' lk-view-toggle-btn--active' : ''}`}
-                  onClick={() => setViewMode('chat')}
-                  title="Plan & Chat — see what LOGIK is doing"
+                  className={`lk-view-toggle-btn${planMode ? ' lk-view-toggle-btn--active' : ''}`}
+                  onClick={() => setPlanMode(true)}
+                  title="Plan mode: creates a plan and asks for approval before implementing."
                 >Plan</button>
                 <button
-                  className={`lk-view-toggle-btn${viewMode === 'code' ? ' lk-view-toggle-btn--active' : ''}`}
-                  onClick={() => { setViewMode('code'); if (activeTab === 'activity') setActiveTab('code') }}
-                  title="Code — see the generated files"
+                  className={`lk-view-toggle-btn${!planMode ? ' lk-view-toggle-btn--active' : ''}`}
+                  onClick={() => setPlanMode(false)}
+                  title="Code mode: runs straight through implementation."
                 >Code</button>
               </div>
 
@@ -1742,45 +1719,24 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
             </div>
           )}
 
-          {/* ── Output area: tab bar + panels ────────────────────────────── */}
-          <div className="lk-feed-output">
-
-          {/* Tab bar */}
-          <div className="lk-tabs">
-            {visibleTabs.map(t => (
-              <button
-                key={t.id}
-                className={`lk-tab${effectiveActiveTab === t.id ? ' lk-tab--active' : ''}`}
-                onClick={() => { setActiveTab(t.id); setViewMode(t.id === 'activity' ? 'chat' : 'code') }}
-              >{t.label}</button>
-            ))}
-            <div className="lk-tab-spacer" />
-            {generatedCode && activeTab !== 'run' && (
-              <div className="lk-tab-actions">
-                <span className="lk-lang-chip">{language}</span>
-                {editMode === 'patch' && patchEdits.length > 0 && (
-                  <span className="lk-patch-chip">{patchEdits.filter(e => e.applied).length}/{patchEdits.length} edits applied</span>
-                )}
-                <button className={`lk-copy-btn${copied ? ' lk-copy-btn--done' : ''}`} onClick={handleCopy}>
-                  {copied ? '✓ Copied' : '⎘ Copy'}
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* ── Activity tab ─────────────────────────────────────────────────── */}
-          {effectiveActiveTab === 'activity' && (
-            <LogikActivityFeed
-              activityLog={activityLog}
-              isAgentRunning={agentSession.isAgentRunning}
-              agentStreamText={agentSession.agentStreamText}
-              isGenerating={isGenerating}
-              isPushing={isPushing}
-              feedRef={activityFeedRef}
-              onViewCode={() => { setActiveTab('code'); setViewMode('code') }}
-              conversation={conversation}
-            />
+          {chatHistoryOpen && (
+            <div className="lk-inline-chat-history">
+              <div className="lk-inline-chat-history-hd">Chat History</div>
+              {conversation.length === 0 ? (
+                <div className="lk-empty-note">No chat messages yet.</div>
+              ) : (
+                conversation.slice(-8).map((msg, idx) => (
+                  <div key={`${msg.role}-${idx}`} className="lk-inline-chat-item">
+                    <span className="lk-inline-chat-role">{msg.role === 'user' ? 'You' : 'LOGIK'}</span>
+                    <span className="lk-inline-chat-text">{msg.content}</span>
+                  </div>
+                ))
+              )}
+            </div>
           )}
+
+          {/* ── Output area ────────────────────────────────────────────── */}
+          <div className="lk-feed-output">
 
           {/* ── Code tab ────────────────────────────────────────────────────── */}
           {effectiveActiveTab === 'code' && (
@@ -1834,57 +1790,6 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
             <LogikDiffViewer diffText={diffText} patchEdits={patchEdits} />
           )}
 
-          {/* ── Git status tab ───────────────────────────────────────────────── */}
-          <div className="lk-output" style={{ display: effectiveActiveTab === 'status' ? 'block' : 'none' }}>
-            <div className="lk-code-scroll" style={{ height: '100%' }}>
-              {hasGithub && workflows.length > 0 && (
-                <div className="lk-workflow-bar">
-                  <div className="lk-workflow-label">Workflow:</div>
-                  <div className="lk-workflow-name">{workflows[0].name || workflows[0].path}</div>
-                  <button
-                    className="lk-btn lk-btn--small"
-                    onClick={triggerWorkflow}
-                    disabled={isPollingCI}
-                    title="Trigger the configured GitHub Actions workflow"
-                  >
-                    {isPollingCI ? <><span className="lk-spinner" /> Running…</> : 'Run CI'}
-                  </button>
-                </div>
-              )}
-
-              {workflowRuns.length > 0 && (
-                <div className="lk-workflow-runs">
-                  <div className="lk-workflow-runs-title">Recent workflow run:</div>
-                  {workflowRuns.map((run, i) => (
-                    <div key={i} className="lk-workflow-run">
-                      <div className="lk-workflow-run-name">{run.name}</div>
-                      <div className="lk-workflow-run-status">{run.status} / {run.conclusion || 'pending'}</div>
-                      {run.html_url && (
-                        <a className="lk-link" href={run.html_url} target="_blank" rel="noopener noreferrer">View on GitHub</a>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {gitStatus ? (
-                <div className="lk-status-log">
-                  {gitStatus.map((s, i) => (
-                    <div key={i} className={`lk-status-line${s.ok === false ? ' lk-status-line--err' : s.msg.startsWith('──') ? ' lk-status-line--sep' : ''}`}>
-                      {s.msg}
-                    </div>
-                  ))}
-                  {isPushing && <div className="lk-status-line lk-status-line--busy"><span className="lk-spinner" /> {pushStep}</div>}
-                </div>
-              ) : (
-                <div className="lk-placeholder">
-                  <div className="lk-placeholder-glyph">⟳</div>
-                  <p className="lk-placeholder-body">Git operation log appears here after pushing.</p>
-                  {!hasGithub && <p className="lk-placeholder-tip">Configure GitHub token, owner, and repo in ⚙ Settings.</p>}
-                </div>
-              )}
-            </div>
-          </div>
 
           {/* ── ENHANCEMENT 7 — Run tab (JS sandbox) ──────────────────────── */}
           <div className="lk-output" style={{ display: effectiveActiveTab === 'run' ? 'flex' : 'none', flexDirection: 'column' }}>
@@ -1941,8 +1846,14 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
             />
           )}
 
-          {effectiveActiveTab === 'modules' && (
-            <LogikModularTools />
+          {modulesOpen && (
+            <div className="lk-modules-inline">
+              <div className="lk-modules-inline-hd">
+                <span>Modules</span>
+                <button className="lk-btn lk-btn--small" onClick={() => setModulesOpen(false)}>Close</button>
+              </div>
+              <LogikModularTools />
+            </div>
           )}
 
           </div>{/* end lk-feed-output */}
@@ -2011,11 +1922,15 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
                   }}
                 >📁 Attach folder</button>
               )}
+              <button
+                className={`lk-btn lk-btn--small lk-btn--attach${modulesOpen ? ' lk-btn--active' : ''}`}
+                onClick={() => setModulesOpen(v => !v)}
+                title="Open modules"
+              >⊕ Modules</button>
             </div>
 
             {/* Right: action buttons */}
             <div className="lk-input-right">
-              <span className="lk-kbd-hint">Ctrl+↵</span>
               <>
 
                   {/* Push button — only when there's generated code to push */}
@@ -2025,11 +1940,6 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
                     const pushLabel = fileCount > 1 ? `${fileCount} files` : 'to GitHub'
                     return (
                       <>
-                        {hasDiffs && activeTab !== 'diff' && (
-                          <button className="lk-btn lk-btn--review" onClick={() => { setActiveTab('diff'); setViewMode('code') }}>
-                            <span className="lk-btn-icon">⊕</span>Review Diff
-                          </button>
-                        )}
                         <button className={`lk-btn lk-btn--push${hasDiffs ? ' lk-btn--push-ready' : ''}`} onClick={handlePush}>
                           <span className="lk-btn-icon">⬆</span>Push {pushLabel}
                         </button>
@@ -2042,17 +1952,6 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
                     <button className="lk-btn lk-btn--run" onClick={handleRunProjectTests} disabled={isRunningPostPushTests}>
                       <span className="lk-btn-icon">⊛</span>
                       {isRunningPostPushTests ? 'Running…' : 'Run Tests'}
-                    </button>
-                  )}
-
-                  {/* Plan Mode toggle — read-only analysis, shown only when GitHub connected */}
-                  {hasGithub && (
-                    <button
-                      className={`lk-btn lk-btn--small${planMode ? ' lk-btn--active' : ''}`}
-                      onClick={() => setPlanMode(m => !m)}
-                      title={planMode ? 'Plan mode ON — agent reads only. Click to switch to Build mode.' : 'Plan mode OFF — agent can write files. Click to switch to Plan mode (read-only analysis).'}
-                    >
-                      {planMode ? '📋 Plan' : 'Plan'}
                     </button>
                   )}
 
