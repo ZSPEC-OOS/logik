@@ -4369,3 +4369,18 @@ kbd {
   color: var(--lk-text);
   line-height: 1.5;
 }
+.lk-si-log-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+.lk-si-log-file {
+  font-size: 10px;
+  font-family: var(--lk-mono, monospace);
+  color: var(--lk-accent);
+  background: var(--lk-accent-dim);
+  padding: 1px 5px;
+  border-radius: 3px;
+  word-break: break-all;
+}

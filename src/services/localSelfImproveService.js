@@ -146,6 +146,7 @@ export async function runLocalSelfImproveLoop(config, callbacks) {
     onStep?.({ cycle, msg: `Exploring ${name} for an enhancement…` })
 
     let output = ''
+    const writtenFiles = []   // files actually modified this cycle
 
     try {
       await runAgentLoop({
@@ -156,6 +157,11 @@ export async function runLocalSelfImproveLoop(config, callbacks) {
         modelConfig,
         onEvent: e => {
           if (e.type === 'text_delta') output += e.text
+          // Track every file the agent writes/edits
+          if (e.type === 'tool_done' && (e.tool_name === 'write_file' || e.tool_name === 'edit_file')) {
+            const p = e.tool_input?.path
+            if (p && !writtenFiles.includes(p)) writtenFiles.push(p)
+          }
           onEvent?.({ ...e, cycle })
         },
         signal,
@@ -165,10 +171,18 @@ export async function runLocalSelfImproveLoop(config, callbacks) {
       onEvent?.({ type: 'error', text: `Cycle ${cycle} error: ${e.message}`, cycle })
     }
 
-    const description = output.match(/Enhancement:\s*(.+)/)?.[1]?.trim()
-      || `Enhancement applied to ${name}`
+    // 1. Try the explicit "Enhancement: ..." line (case-insensitive, trimmed)
+    // 2. Fall back to the list of files actually modified
+    // 3. Last resort: first meaningful sentence from the agent's text
+    const tagged = output.match(/Enhancement[:\s]+(.{8,})/i)?.[1]?.split('\n')[0]?.trim()
+    const filesDesc = writtenFiles.length > 0
+      ? `Modified ${writtenFiles.join(', ')}`
+      : null
+    const textFallback = output.replace(/\n+/g, ' ').match(/(?:I (?:have |))(?:added|implemented|updated|improved|fixed|refactored|created)\s+(.{10,120})/i)?.[1]?.trim()
 
-    onLog?.({ cycle, description, timestamp: Date.now() })
+    const description = tagged || filesDesc || textFallback || `Cycle ${cycle} — no changes detected`
+
+    onLog?.({ cycle, description, files: writtenFiles, timestamp: Date.now() })
     onStep?.({ cycle, msg: description })
     onCycleEnd?.(cycle)
 
