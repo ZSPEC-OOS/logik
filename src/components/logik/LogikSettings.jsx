@@ -22,12 +22,6 @@ const LogikSettings = memo(function LogikSettings({
   hasGithub,
   onReindex,
 
-  // Source repo (secondary / fusion)
-  repo2Token, setRepo2Token,
-  repo2Owner, setRepo2Owner,
-  repo2Name,  setRepo2Name,
-  repo2Branch,setRepo2Branch,
-  hasBothRepos,
   onReindex2,
 
   // Generation options
@@ -432,56 +426,6 @@ const LogikSettings = memo(function LogikSettings({
         </div>
       </div>
 
-      {/* ── Source Repository (Fusion) ──────────────────────────────────────── */}
-      <div className="lk-security-section">
-        <div className="lk-security-label lk-fusion-settings-label">
-          Source Repository
-          {hasBothRepos && <span className="lk-fusion-badge">⟳ Fusion Active</span>}
-        </div>
-        <div className="lk-security-body">
-          <span className="lk-security-note">
-            Connect a second repo as a read-only source. When both repos are connected, the Fusion tab unlocks — giving you preset rituals to extract patterns, features, and strengths from source into target.
-          </span>
-          <div className="lk-field lk-field--url">
-            <label className="lk-label">Quick Setup</label>
-            <input
-              className="lk-input"
-              placeholder="Paste GitHub URL — github.com/owner/repo"
-              onChange={e => {
-                const parsed = parseGitHubUrl(e.target.value)
-                if (parsed) { setRepo2Owner(parsed.owner); setRepo2Name(parsed.repo) }
-              }}
-            />
-          </div>
-          <div className="lk-drawer-grid">
-            <div className="lk-field">
-              <label className="lk-label">Token (optional — reuses primary if blank)</label>
-              <input className="lk-input" type="password" placeholder="ghp_xxxxxxxxxxxx (or leave blank)"
-                value={repo2Token} onChange={e => setRepo2Token(e.target.value)} autoComplete="off" />
-            </div>
-            <div className="lk-field">
-              <label className="lk-label">Owner</label>
-              <input className="lk-input" placeholder="username or org"
-                value={repo2Owner} onChange={e => setRepo2Owner(e.target.value.trim())} />
-            </div>
-            <div className="lk-field">
-              <label className="lk-label">Repository</label>
-              <input className="lk-input" placeholder="source-repo"
-                value={repo2Name} onChange={e => setRepo2Name(e.target.value.trim())} />
-            </div>
-            <div className="lk-field">
-              <label className="lk-label">Branch</label>
-              <input className="lk-input" placeholder="main"
-                value={repo2Branch} onChange={e => setRepo2Branch(e.target.value.trim())} />
-            </div>
-            <div className="lk-field">
-              <button className="lk-btn lk-btn--small" disabled={!repo2Owner || !repo2Name} onClick={onReindex2}>
-                ♻ Reindex source
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
 
       <div className="lk-drawer-toggles">
         <label className="lk-toggle"><input type="checkbox" checked={generateTests} onChange={e => setGenerateTests(e.target.checked)} /><span>Generate test file alongside code</span></label>
