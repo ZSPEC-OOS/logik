@@ -117,6 +117,38 @@ function buildCommitMsg(action, path, userMsg) {
 export function makeExecutor({ token, owner, repo, branch, onFileWrite, sourceRepoConfig, webSearchApiKey, bridgeAvailable, localDirHandle }) {
   return async function executeTool(name, input) {
     switch (name) {
+      // ── analyze_codebase ───────────────────────────────────────────────
+      case 'analyze_codebase': {
+        if (!shadowContext.isReady) {
+          return `Codebase index not ready (${shadowContext.indexedFileCount()} files indexed).`
+        }
+        const conventions = shadowContext.getConventions?.() || {}
+        const importGraph = shadowContext.getImportGraph?.() || {}
+        const inDegree = {}
+        for (const deps of Object.values(importGraph)) {
+          for (const dep of deps || []) inDegree[dep] = (inDegree[dep] || 0) + 1
+        }
+        const topLimit = Math.max(3, Math.min(input.top_hubs || 10, 20))
+        const topHubs = Object.entries(inDegree)
+          .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+          .slice(0, topLimit)
+          .map(([path, degree]) => `${path} (imports: ${degree})`)
+        const mapChars = Math.max(1200, Math.min(input.max_chars || 3000, 8000))
+        const repoMap = shadowContext.buildRepoMap?.(mapChars) || '(repo map unavailable)'
+        const lines = [
+          `Indexed files: ${shadowContext.indexedFileCount()}`,
+          `Framework: ${conventions.framework || 'unknown'}`,
+          `Language: ${conventions.language || 'unknown'}`,
+          `Naming: ${conventions.namingConvention || 'unknown'}`,
+          '',
+          'Top dependency hubs:',
+          ...(topHubs.length ? topHubs.map((h, i) => `${i + 1}. ${h}`) : ['(no import graph data)']),
+          '',
+          'Repository map:',
+          repoMap,
+        ]
+        return lines.join('\n')
+      }
 
       // ── read_file (with optional line range) ───────────────────────────
       case 'read_file': {

@@ -141,6 +141,14 @@ function pruneMessages(messages, diary = null, isAnthropic = false) {
 // in a row it has likely entered an infinite loop.  We inject a recovery note
 // into the conversation so the model tries a different approach.
 const LOOP_WINDOW = 3
+const CACHEABLE_TOOLS = new Set([
+  'analyze_codebase',
+  'read_file',
+  'read_many_files',
+  'list_directory',
+  'search_files',
+  'grep',
+])
 
 function toolSignature(toolCalls) {
   return toolCalls
@@ -168,6 +176,7 @@ export async function runAgentLoop({
   const filesChanged = []
   const recentSigs   = []   // rolling window of tool-call signatures for loop detection
   const diary        = makeSessionDiary()   // Claude Code-style session digest
+  const toolResultCache = new Map()
 
   // Initial message â system prompt is injected as first user message
   // (both Anthropic and OpenAI accept a system field or a leading user message)
@@ -242,14 +251,24 @@ export async function runAgentLoop({
     const settled = await Promise.allSettled(
       response.toolCalls.map(async (tc) => {
         const id = toolCallIds.get(tc)
+        const cacheKey = `${tc.name}:${JSON.stringify(tc.input || {})}`
         try {
+          if (CACHEABLE_TOOLS.has(tc.name) && toolResultCache.has(cacheKey)) {
+            const cached = toolResultCache.get(cacheKey)
+            onEvent({ type: 'tool_done', id, name: tc.name, result: cached, error: null, cached: true })
+            return cached
+          }
+
           const result = await executeTool(tc.name, tc.input)
+          if (CACHEABLE_TOOLS.has(tc.name)) toolResultCache.set(cacheKey, result)
+
           if (tc.name === 'write_file' || tc.name === 'edit_file' || tc.name === 'delete_file' || tc.name === 'revert_file') {
             const path = tc.input.path
             if (!filesChanged.includes(path)) filesChanged.push(path)
             const action = tc.name === 'write_file' ? 'write' : tc.name === 'delete_file' ? 'delete' : 'edit'
             onEvent({ type: 'file_write', path, action })
             diary.onFileWrite(path, action)
+            toolResultCache.clear() // file system changed — drop stale read/search cache
           } else if (tc.name === 'read_file' || tc.name === 'read_many_files') {
             const paths = tc.name === 'read_many_files' ? (tc.input.paths || []) : [tc.input.path]
             paths.forEach(p => diary.onFileRead(p))
