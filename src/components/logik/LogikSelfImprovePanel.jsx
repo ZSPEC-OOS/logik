@@ -11,7 +11,7 @@
 //   paused     → split screen, paused indicator, resume/stop
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { shadowContext2 }          from '../../services/shadowContext'
+import { shadowContext, shadowContext2 } from '../../services/shadowContext'
 import { runSelfImproveLoop, validateRepo } from '../../services/selfImproveService'
 
 // ── Step labels ───────────────────────────────────────────────────────────────
