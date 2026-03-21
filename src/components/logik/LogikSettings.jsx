@@ -39,6 +39,8 @@ const LogikSettings = memo(function LogikSettings({
 
   // Fine-tune
   fineTune, setFineTune, DEFAULT_FT,
+  // Header layout controls
+  headerLayout, setHeaderLayout, DEFAULT_HEADER_LAYOUT,
 
   // Permission mode
   permissionMode, setPermissionMode,
@@ -508,6 +510,40 @@ const LogikSettings = memo(function LogikSettings({
           ))}
           <button className="lk-finetune-reset" onClick={() => setFineTune(DEFAULT_FT)}>
             ↺ Reset to defaults
+          </button>
+        </div>
+      </div>
+
+      {/* Header layout sliders */}
+      <div className="lk-finetune-section">
+        <div className="lk-finetune-label">Header Layout</div>
+        <div className="lk-finetune-grid">
+          {[
+            { key: 'headerHeight', label: 'Header Height', min: 36, max: 96 },
+            { key: 'logoSize', label: 'Logo Size', min: 12, max: 64 },
+            { key: 'logoOffsetX', label: 'Logo X', min: -80, max: 80 },
+            { key: 'logoOffsetY', label: 'Logo Y', min: -40, max: 40 },
+            { key: 'titleSize', label: 'Title Size', min: 9, max: 28 },
+            { key: 'titleOffsetX', label: 'Title X', min: -120, max: 120 },
+            { key: 'titleOffsetY', label: 'Title Y', min: -40, max: 40 },
+            { key: 'toggleOffsetX', label: 'Plan/Code X', min: -160, max: 160 },
+            { key: 'toggleOffsetY', label: 'Plan/Code Y', min: -40, max: 40 },
+          ].map(({ key, label, min, max }) => (
+            <div key={key} className="lk-finetune-row">
+              <div className="lk-finetune-row-label">
+                <span className="lk-finetune-name">{label}</span>
+                <span className="lk-finetune-val">{headerLayout[key]}</span>
+              </div>
+              <input
+                type="range" className="lk-slider"
+                min={min} max={max}
+                value={headerLayout[key]}
+                onChange={e => setHeaderLayout(prev => ({ ...prev, [key]: Number(e.target.value) }))}
+              />
+            </div>
+          ))}
+          <button className="lk-finetune-reset" onClick={() => setHeaderLayout(DEFAULT_HEADER_LAYOUT)}>
+            ↺ Reset header layout
           </button>
         </div>
       </div>

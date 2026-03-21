@@ -175,6 +175,28 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
     highlight:  saved.ftHighlight  ?? 50,
     shadow:     saved.ftShadow     ?? 50,
   })
+  const DEFAULT_HEADER_LAYOUT = useMemo(() => ({
+    headerHeight: 44,
+    titleSize: 11,
+    logoSize: 18,
+    logoOffsetX: 0,
+    logoOffsetY: 0,
+    titleOffsetX: 0,
+    titleOffsetY: 0,
+    toggleOffsetX: 0,
+    toggleOffsetY: 0,
+  }), [])
+  const [headerLayout, setHeaderLayout] = useState({
+    headerHeight: saved.headerHeight ?? 44,
+    titleSize:    saved.titleSize    ?? 11,
+    logoSize:     saved.logoSize     ?? 18,
+    logoOffsetX:  saved.logoOffsetX  ?? 0,
+    logoOffsetY:  saved.logoOffsetY  ?? 0,
+    titleOffsetX: saved.titleOffsetX ?? 0,
+    titleOffsetY: saved.titleOffsetY ?? 0,
+    toggleOffsetX:saved.toggleOffsetX ?? 0,
+    toggleOffsetY:saved.toggleOffsetY ?? 0,
+  })
 
   // ── Input ──────────────────────────────────────────────────────────────
   const [prompt,           setPrompt]           = useState('')
@@ -296,6 +318,11 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
   // fineTune is decomposed into primitives so React can compare by value,
   // not by object reference (which would fire this effect on every render).
   const { brightness, contrast, saturation, highlight, shadow } = fineTune
+  const {
+    headerHeight, titleSize, logoSize,
+    logoOffsetX, logoOffsetY, titleOffsetX, titleOffsetY,
+    toggleOffsetX, toggleOffsetY,
+  } = headerLayout
   useEffect(() => {
     const s = {
       repoOwner, repoName, baseBranch, githubToken,
@@ -303,6 +330,9 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
       ftBrightness: brightness, ftContrast: contrast,
       ftSaturation: saturation, ftHighlight: highlight,
       ftShadow: shadow,
+      headerHeight, titleSize, logoSize,
+      logoOffsetX, logoOffsetY, titleOffsetX, titleOffsetY,
+      toggleOffsetX, toggleOffsetY,
       creativity, enableThinking,
       webSearchApiKey,
       permissionMode,
@@ -312,6 +342,9 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
     onSettingsChangedRef.current?.(s)
   }, [repoOwner, repoName, baseBranch, githubToken,
       theme, brightness, contrast, saturation, highlight, shadow,
+      headerHeight, titleSize, logoSize,
+      logoOffsetX, logoOffsetY, titleOffsetX, titleOffsetY,
+      toggleOffsetX, toggleOffsetY,
       creativity, enableThinking, webSearchApiKey, permissionMode])
 
   // ── Phase 4: start ShadowContext indexing when credentials are ready ────
@@ -1501,13 +1534,32 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
       <div className="lk-main">
 
         {/* ── Thin top bar ──────────────────────────────────────────────────── */}
-        <div className="lk-topbar">
+        <div className="lk-topbar" style={{ height: `${headerLayout.headerHeight}px` }}>
           <>
 
-              <img className="lk-brand-logo" src={logikLogo} alt="LOGIK" />
-              <span className="lk-brand-sub">AI Coding Assistant</span>
+              <img
+                className="lk-brand-logo"
+                src={logikLogo}
+                alt="LOGIK"
+                style={{
+                  height: `${logoSize}px`,
+                  transform: `translate(${logoOffsetX}px, ${logoOffsetY}px)`,
+                }}
+              />
+              <span
+                className="lk-brand-sub"
+                style={{
+                  fontSize: `${titleSize}px`,
+                  transform: `translate(${titleOffsetX}px, ${titleOffsetY}px)`,
+                }}
+              >AI Coding Assistant</span>
 
-              <div className="lk-view-toggle" role="group" aria-label="View mode">
+              <div
+                className="lk-view-toggle"
+                role="group"
+                aria-label="View mode"
+                style={{ transform: `translate(${toggleOffsetX}px, ${toggleOffsetY}px)` }}
+              >
                 <button
                   className={`lk-view-toggle-btn${viewMode === 'chat' ? ' lk-view-toggle-btn--active' : ''}`}
                   onClick={() => setViewMode('chat')}
@@ -1569,6 +1621,8 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
             theme={theme}                   setTheme={setTheme}
             fineTune={fineTune}             setFineTune={setFineTune}
             DEFAULT_FT={DEFAULT_FT}
+            headerLayout={headerLayout}     setHeaderLayout={setHeaderLayout}
+            DEFAULT_HEADER_LAYOUT={DEFAULT_HEADER_LAYOUT}
             permissionMode={permissionMode} setPermissionMode={setPermissionMode}
             logikMdDraft={logikMdDraft}     setLogikMdDraft={setLogikMdDraft}
             onSaveLogikMd={handleSaveLogikMd}
