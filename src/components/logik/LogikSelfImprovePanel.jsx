@@ -73,8 +73,8 @@ export default function LogikSelfImprovePanel({ modelConfig }) {
     setFeed(f => [...f, { id: Date.now() + Math.random(), text, kind, time: ts() }].slice(-FEED_MAX))
   }
 
-  function addEnhancement(cycle, description) {
-    setEnhancements(e => [...e, { id: Date.now() + Math.random(), cycle, description, time: ts() }])
+  function addEnhancement(cycle, description, files = []) {
+    setEnhancements(e => [...e, { id: Date.now() + Math.random(), cycle, description, files, time: ts() }])
   }
 
   // ── Start / pause / stop ─────────────────────────────────────────────────────
@@ -118,8 +118,8 @@ export default function LogikSelfImprovePanel({ modelConfig }) {
           }
         },
 
-        onLog: ({ cycle, description }) => {
-          addEnhancement(cycle, description)
+        onLog: ({ cycle, description, files }) => {
+          addEnhancement(cycle, description, files)
           addFeed(`✦ ${description}`, 'enhancement')
         },
 
@@ -273,6 +273,11 @@ export default function LogikSelfImprovePanel({ modelConfig }) {
                     <span className="lk-si-log-time">{e.time}</span>
                   </div>
                   <div className="lk-si-log-desc">{e.description}</div>
+                  {e.files?.length > 0 && (
+                    <div className="lk-si-log-files">
+                      {e.files.map(f => <span key={f} className="lk-si-log-file">{f}</span>)}
+                    </div>
+                  )}
                 </div>
               ))
             )}
