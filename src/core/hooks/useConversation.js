@@ -1,9 +1,12 @@
 // ─── useConversation ──────────────────────────────────────────────────────────
 // Manages multi-turn conversation state with localStorage persistence.
 // Survives page reloads up to CONV_MAX_MESSAGES messages (10 turns).
+// Layer 1 (Conversation Intelligence): exposes compressMemory() which reduces
+// prior turns into a MemoryBlock digest for system prompt injection.
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { CONV_MAX_MESSAGES } from '../../config/constants.js'
+import { compressToMemoryBlock, buildMemoryDigest } from '../../services/interactivePipeline.js'
 
 const CONV_KEY = 'logik:conv'
 
@@ -36,5 +39,19 @@ export function useConversation() {
     try { localStorage.removeItem(CONV_KEY) } catch {}
   }, [])
 
-  return { conversation, setConversation, turnCount, setTurnCount, addTurn, reset }
+  // Layer 1: MemoryBlock — compressed digest of prior turns for context injection.
+  // Re-computed only when conversation changes; cheap because it only processes
+  // the assistant messages already in memory.
+  const memoryBlock = useMemo(
+    () => conversation.length >= 4 ? compressToMemoryBlock(conversation) : null,
+    [conversation],
+  )
+
+  /** Returns a compact string digest of prior turns for system prompt injection. */
+  const getMemoryDigest = useCallback(
+    () => memoryBlock ? buildMemoryDigest(memoryBlock) : '',
+    [memoryBlock],
+  )
+
+  return { conversation, setConversation, turnCount, setTurnCount, addTurn, reset, memoryBlock, getMemoryDigest }
 }

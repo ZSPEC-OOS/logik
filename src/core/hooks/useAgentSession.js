@@ -1,12 +1,24 @@
 // ─── useAgentSession ──────────────────────────────────────────────────────────
 // Encapsulates all state and logic for running the agentic tool-use loop.
 // Extracted from Logik.jsx to isolate agent concerns from generate/UI concerns.
+//
+// Intelligence layers wired in:
+//   Layer 1 — detectIntent: classifies each task before the loop starts
+//   Layer 2 — createTask: tracks lifecycle (active → completed/interrupted)
+//   Layer 3 — toolToLogMessage + inferPhaseFromTool: descriptive activity log
 
 import { useState, useRef, useCallback } from 'react'
 import { runAgentLoop } from '../../services/agentLoop.js'
 import { makeExecutor }  from '../../services/agentExecutor.js'
 import { AGENT_TOOLS, buildAgentSystemPrompt } from '../../services/agentTools.js'
 import { shadowContext } from '../../services/shadowContext.js'
+import {
+  detectIntent,
+  INTENT_LABELS,
+  createTask,
+  inferPhaseFromTool,
+  toolToLogMessage,
+} from '../../services/interactivePipeline.js'
 
 // Read-only tools — used when planMode is active (no writes, no shell exec)
 const PLAN_MODE_TOOLS = new Set([
@@ -40,6 +52,11 @@ export function useAgentSession({
   const [agentSummary,    setAgentSummary]    = useState('')
   const [agentFiles,      setAgentFiles]      = useState([])
   const [agentStreamText, setAgentStreamText] = useState('')
+  // Layer 1+2: intent and task exposed so parent/UI can read them
+  const [agentIntent,     setAgentIntent]     = useState(null)
+  const [agentTask,       setAgentTask]       = useState(null)
+  // Layer 3: current inferred phase (updates on each tool call)
+  const [agentPhase,      setAgentPhase]      = useState('understanding')
 
   const streamTextRef   = useRef('')
   const abortRef        = useRef(null)
@@ -61,6 +78,18 @@ export function useAgentSession({
     setAgentFiles([])
     streamTextRef.current = ''
     setAgentStreamText('')
+
+    // Layer 1: detect intent before the loop so the badge appears immediately
+    const intent     = detectIntent(task)
+    const intentLabel = INTENT_LABELS[intent] || intent
+    setAgentIntent(intent)
+
+    // Layer 2: create a Task object to track lifecycle
+    const currentTask = createTask(task)
+    setAgentTask({ ...currentTask })
+
+    // Layer 3: reset phase indicator
+    setAgentPhase('understanding')
 
     const ctrl = new AbortController()
     abortRef.current = ctrl
@@ -98,7 +127,8 @@ export function useAgentSession({
       shadowContext.buildRepoMap(3000),   // Aider-style symbol map ranked by centrality
     )
 
-    const startId = logActivity('agent', `⚡ Agent starting — "${task.slice(0, 60)}"`)
+    // Layer 1: show intent badge in the first activity entry
+    const startId = logActivity('agent', `⚡ [${intentLabel}] "${task.slice(0, 60)}"`)
     onSetActiveTab?.('activity')
 
     try { await runAgentLoop({
@@ -136,7 +166,16 @@ export function useAgentSession({
               streamTextRef.current = ''
               setAgentStreamText('')
             }
-            logActivity('tool', `▶ ${ev.name}(${JSON.stringify(ev.input).slice(0, 80)})`)
+            // Layer 3: descriptive message instead of raw JSON
+            const logMsg = toolToLogMessage(ev.name, ev.input || {})
+            // Layer 3: infer phase from tool and update phase indicator
+            const inferredPhase = inferPhaseFromTool(ev.name)
+            setAgentPhase(inferredPhase)
+            // Layer 2: update task currentStep when a todo tool fires
+            if (ev.name === 'todo' && ev.input?.action === 'in_progress') {
+              setAgentTask(prev => prev ? { ...prev, steps: [...(prev.steps || []), ev.input.task || ''] } : prev)
+            }
+            logActivity('tool', `● ${logMsg}`)
             break
           }
 
@@ -173,6 +212,9 @@ export function useAgentSession({
             }
             setAgentSummary(ev.text || '')
             setAgentFiles(ev.filesChanged || [])
+            // Layer 2: mark task completed
+            setAgentTask(prev => prev ? { ...prev, status: 'completed' } : prev)
+            setAgentPhase('complete')
             updateActivity(startId, {
               status: 'done',
               msg: `⚡ Agent done — ${ev.filesChanged?.length || 0} file(s) changed`,
@@ -185,6 +227,8 @@ export function useAgentSession({
           }
 
           case 'error':
+            // Layer 2: mark task interrupted
+            setAgentTask(prev => prev ? { ...prev, status: 'interrupted' } : prev)
             logActivity('error', `✗ Agent error: ${ev.message}`)
             updateActivity(startId, { status: 'error', msg: `⚡ Agent failed — ${ev.message}` })
             break
@@ -211,8 +255,14 @@ export function useAgentSession({
 
   const abort = useCallback(() => {
     abortRef.current?.abort()
+    setAgentTask(prev => prev ? { ...prev, status: 'interrupted' } : prev)
     setIsAgentRunning(false)
   }, [])
 
-  return { isAgentRunning, agentSummary, agentFiles, agentStreamText, abortRef, run, abort }
+  return {
+    isAgentRunning, agentSummary, agentFiles, agentStreamText,
+    // Layer 1+2+3 new exports
+    agentIntent, agentTask, agentPhase,
+    abortRef, run, abort,
+  }
 }
