@@ -17,6 +17,7 @@ const LogikCodePane = memo(function LogikCodePane({
   pipelinePhase,
   pipelineSteps,
   validationResults,
+  livePlan = [],
 }) {
   return (
     <div className="lk-output" style={{ display: 'flex', flexDirection: 'column' }}>
@@ -28,6 +29,14 @@ const LogikCodePane = memo(function LogikCodePane({
             </span>
           ))}
           <span className="lk-phase-current">Current: {pipelinePhase}</span>
+        </div>
+      )}
+      {!!livePlan.length && (
+        <div className="lk-validation-panel" style={{ marginTop: 8, marginBottom: 8 }}>
+          <div className="lk-validation-title">Live Plan</div>
+          {livePlan.map((step, idx) => (
+            <div key={`${step}-${idx}`} className="lk-validation-row">{idx + 1}. {step}</div>
+          ))}
         </div>
       )}
       <div className="lk-code-scroll" style={{ flex: 1 }}>

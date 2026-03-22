@@ -21,6 +21,9 @@ import {
   createPipelineSteps,
   formatStructuredOutput,
   parsePromptCommand,
+  createAssistantMessage,
+  createStreamEvent,
+  applyStreamEvent,
 } from '../services/interactivePipeline'
 import { useConversation }   from '../core/hooks/useConversation'
 import { useExecBridge }     from '../core/hooks/useExecBridge'
@@ -296,6 +299,7 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
   const [pipelinePhase, setPipelinePhase] = useState('understanding')
   const [pipelineSteps, setPipelineSteps] = useState(() => createPipelineSteps('understanding'))
   const [validationResults, setValidationResults] = useState([])
+  const [assistantMessage, setAssistantMessage] = useState(() => createAssistantMessage())
 
   // ── Phase 2: IntentAmplifier ───────────────────────────────────────────
   const [isAmplifying,       setIsAmplifying]       = useState(false)
@@ -471,6 +475,18 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
     setPipelineSteps(createPipelineSteps(phase))
   }, [])
 
+  const emitStreamEvent = useCallback((event) => {
+    if (!event?.type) return
+    if (event.type === 'status' && event.phase) setActivePhase(event.phase)
+    if (event.type === 'plan' && Array.isArray(event.steps)) {
+      setAssistantMessage(prev => applyStreamEvent(prev, event))
+      return
+    }
+    if (event.type === 'content' || event.type === 'code' || event.type === 'validation') {
+      setAssistantMessage(prev => applyStreamEvent(prev, event))
+    }
+  }, [setActivePhase])
+
   const orderFilePlan = useCallback((plan) => {
     const graph = shadowContext.getImportGraph() || {}
     const paths = plan.map(p => p.path)
@@ -621,7 +637,9 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
 
     setError('')
     setValidationResults([])
-    setActivePhase('understanding')
+    const runAssistantMessage = createAssistantMessage(`${Date.now()}`)
+    setAssistantMessage(runAssistantMessage)
+    emitStreamEvent(createStreamEvent('status', { phase: 'understanding' }))
     setAmplifierDecisions([])
     setIsGenerating(true)
 
@@ -678,12 +696,16 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
           { role: 'assistant', content: 'Understood. I will output only the code.' },
           ...conversation,
         ]
-        setActivePhase('refining')
+        emitStreamEvent(createStreamEvent('status', { phase: 'refining' }))
         const refId = logActivity('generate', `↺ Refining ${entry.path || 'file'}…`)
         let streaming = ''
+        let prevStreaming = ''
         const raw = await runPromptWithRetry(effectiveModel, refMsg, ctx, (partial) => {
           streaming = mode === 'patch' && entry.existingContent ? partial : extractCode(partial)
           updatePlanEntry(activeFileIndex, { code: streaming })
+          const chunk = streaming.startsWith(prevStreaming) ? streaming.slice(prevStreaming.length) : streaming
+          prevStreaming = streaming
+          emitStreamEvent(createStreamEvent('code', { chunk }))
           updateActivity(refId, { detail: `${streaming.split('\n').length} lines…` })
         }, ctrl.signal)
         let finalCode = extractCode(raw)
@@ -692,10 +714,11 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
           if (edits.length > 0) finalCode = result
         }
         updatePlanEntry(activeFileIndex, { code: finalCode, status: 'done' })
-        setActivePhase('validating')
+        emitStreamEvent(createStreamEvent('status', { phase: 'validating' }))
         updateActivity(refId, { status: 'done', msg: `↺ Refined ${entry.path || 'file'}`, detail: `${finalCode.split('\n').length} lines` })
         const refValidation = ['✓ Refinement applied to active file.', '✓ Output is ready for review.']
         setValidationResults(refValidation)
+        emitStreamEvent(createStreamEvent('validation', { results: refValidation }))
         const refOut = formatStructuredOutput({
           summary: `Refined ${entry.path || 'active file'} based on follow-up request.`,
           plan: [`Apply requested changes to ${entry.path || 'active file'}`],
@@ -717,7 +740,7 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
         // Pass files from the current plan (prior run) so the planner knows what was
         // recently generated and can build on or avoid redundancy.
         const recentFiles = filePlan.filter(e => e.status === 'done').map(e => e.path)
-        setActivePhase('planning')
+        emitStreamEvent(createStreamEvent('status', { phase: 'planning' }))
         const planId = logActivity('plan', '◈ Building file plan…')
         setIsPlanning(true)
         const rawPlan = await buildFilePlan(
@@ -737,6 +760,9 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
 
         // Order plan entries based on imports (if available) so dependencies are generated first
         const orderedRawPlan = orderFilePlan(rawPlan)
+        emitStreamEvent(createStreamEvent('plan', {
+          steps: orderedRawPlan.map((e) => `${e.action === 'modify' ? 'Update' : 'Create'} ${e.path} — ${e.purpose}`),
+        }))
         if (command === '/plan') {
           const planOnlyValidation = ['✓ Plan generated.', '✓ No code emitted in /plan mode.']
           setValidationResults(planOnlyValidation)
@@ -803,7 +829,7 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
         } catch { /* non-fatal — proceed without style injection */ }
 
         // Generate each file in the plan
-        setActivePhase('coding')
+        emitStreamEvent(createStreamEvent('status', { phase: 'coding' }))
         for (let i = 0; i < planRef.current.length; i++) {
           if (ctrl.signal.aborted) break
           setActiveFileIndex(i)
@@ -824,12 +850,16 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
 
           try {
             let streaming = ''
+            let prevStreaming = ''
             const raw = await runPromptWithRetry(effectiveModel, fileTask, [
               { role: 'user',      content: sys },
               { role: 'assistant', content: 'Understood. I will output only the code.' },
             ], (partial) => {
               streaming = mode === 'patch' && entry.existingContent ? partial : extractCode(partial)
               updatePlanEntry(i, { code: streaming })
+              const chunk = streaming.startsWith(prevStreaming) ? streaming.slice(prevStreaming.length) : streaming
+              prevStreaming = streaming
+              emitStreamEvent(createStreamEvent('code', { chunk }))
               updateActivity(genId, { detail: `${streaming.split('\n').length} lines…` })
             }, ctrl.signal)
 
@@ -882,7 +912,7 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
             updateActivity(genId, { status: 'done', msg: `▶ ${entry.path}`, detail: `${finalCode.split('\n').length} lines` })
 
             // AutoRemediation
-            setActivePhase('refining')
+            emitStreamEvent(createStreamEvent('status', { phase: 'refining' }))
             updatePlanEntry(i, { status: 'remediating', code: finalCode })
             const remId = logActivity('remediate', `⊛ Testing ${entry.path}`)
             finalCode = await autoRemediate(finalCode, lang, effectiveModel, ctrl.signal, entry.path, entry.purpose)
@@ -925,7 +955,7 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
 
         // Save to history + summary entry
         if (!ctrl.signal.aborted && planRef.current.length > 0) {
-          setActivePhase('validating')
+          emitStreamEvent(createStreamEvent('status', { phase: 'validating' }))
           const doneCount = planRef.current.filter(e => e.status === 'done').length
           logActivity('done', `✓ Complete — ${doneCount}/${planRef.current.length} file${planRef.current.length !== 1 ? 's' : ''} generated`)
           // Auto-switch to Diff tab when diffs are available (surface review naturally)
@@ -942,6 +972,7 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
             generateTests ? '✓ Test generation attempted for completed files.' : '⚠ Test generation disabled.',
           ]
           setValidationResults(validation)
+          emitStreamEvent(createStreamEvent('validation', { results: validation }))
 
           const modeCode = command === '/diff' ? combinedDiff : (primary.code || '')
           const assistantText = formatStructuredOutput({
@@ -973,14 +1004,14 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
       setIsPlanning(false)
       setIsAmplifying(false)
       setIsGenTests(false)   // safety net — ensures it can never stay stuck
-      setActivePhase('complete')
+      emitStreamEvent(createStreamEvent('status', { phase: 'complete' }))
       setPrompt('')
     }
   }, [
     prompt, models, activeModelId, conversation, filePlan,
     generateTests, creativity, enableThinking,
     repoOwner, repoName, baseBranch, githubToken, hasGithub,
-    history, activeFileIndex, autoRemediate, updatePlanEntry, logActivity, updateActivity, setActivePhase, resetConversation,
+    history, activeFileIndex, autoRemediate, updatePlanEntry, logActivity, updateActivity, setActivePhase, resetConversation, emitStreamEvent,
   ])
 
   // ── Refinement shortcut ─────────────────────────────────────────────────
@@ -1831,19 +1862,20 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
           {/* ── Code tab ────────────────────────────────────────────────────── */}
           {effectiveActiveTab === 'code' && (
             <LogikCodePane
-              generatedCode={generatedCode}
+              generatedCode={assistantMessage.code || generatedCode}
               isGenerating={isGenerating}
               language={language}
               hasGithub={hasGithub}
               filePath={filePath}
               refinementPrompt={refinementPrompt}
-              onRefinementChange={e => setRefinementPrompt(e.target.value)}
+              onRefinementChange={setRefinementPrompt}
               onRefine={handleRefine}
               onReset={handleReset}
               turnCount={turnCount}
               pipelinePhase={pipelinePhase}
               pipelineSteps={pipelineSteps}
               validationResults={validationResults}
+              livePlan={assistantMessage.plan}
             />
           )}
 
