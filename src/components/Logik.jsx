@@ -1856,6 +1856,23 @@ export default function Logik({ onClose, models, setModels, selectedModelId, onM
             </div>
           )}
 
+          {/* ── Agent activity feed — shown when agent is running or has output ── */}
+          {(agentSession.isAgentRunning || activityLog.length > 0) && (
+            <LogikActivityFeed
+              activityLog={activityLog}
+              isAgentRunning={agentSession.isAgentRunning}
+              agentStreamText={agentSession.agentStreamText}
+              isGenerating={isGenerating}
+              isPushing={isPushing}
+              feedRef={activityFeedRef}
+              onViewCode={() => {}}
+              conversation={conversation}
+              agentIntent={agentSession.agentIntent}
+              agentTask={agentSession.agentTask}
+              agentPhase={agentSession.agentPhase}
+            />
+          )}
+
           {/* ── Output area ────────────────────────────────────────────── */}
           <div className="lk-feed-output">
 
