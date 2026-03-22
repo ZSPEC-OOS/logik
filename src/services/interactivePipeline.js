@@ -9,6 +9,19 @@ export const PIPELINE_PHASES = [
 
 export const COMMANDS = new Set(['/plan', '/code', '/diff', '/explain', '/reset'])
 
+export function createAssistantMessage(id = `${Date.now()}`) {
+  return {
+    id,
+    role: 'assistant',
+    phase: 'understanding',
+    steps: createPipelineSteps('understanding').map(({ label, state }) => ({ label, state })),
+    content: '',
+    code: '',
+    validation: [],
+    plan: [],
+  }
+}
+
 const STEP_LABELS = {
   understanding: 'Understanding',
   planning: 'Planning',
@@ -25,6 +38,25 @@ export function createPipelineSteps(activePhase = 'understanding') {
     label: STEP_LABELS[phase],
     state: idx < activeIndex ? 'done' : idx === activeIndex ? 'active' : 'pending',
   }))
+}
+
+export function createStreamEvent(type, payload = {}) {
+  return { type, ...payload }
+}
+
+export function applyStreamEvent(message, event) {
+  if (!message || !event) return message
+  const next = { ...message }
+
+  if (event.type === 'status' && event.phase) {
+    next.phase = event.phase
+    next.steps = createPipelineSteps(event.phase).map(({ label, state }) => ({ label, state }))
+  }
+  if (event.type === 'plan' && Array.isArray(event.steps)) next.plan = event.steps
+  if (event.type === 'content' && event.chunk) next.content = `${next.content || ''}${event.chunk}`
+  if (event.type === 'code' && event.chunk) next.code = `${next.code || ''}${event.chunk}`
+  if (event.type === 'validation' && Array.isArray(event.results)) next.validation = [...event.results]
+  return next
 }
 
 export function parsePromptCommand(raw = '') {
